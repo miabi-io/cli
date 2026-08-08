@@ -261,6 +261,21 @@ func (c *Client) RestartApp(ctx context.Context, ws string, appID uint) error {
 	return c.appAction(ctx, ws, appID, "restart")
 }
 
+// SetAppSource replaces where an app's image comes from, including switching between a prebuilt
+// image and a Git build. It is a whole-source replacement: the server clears the fields belonging
+// to the source being left, so a partial request would leave the app describing both.
+func (c *Client) SetAppSource(ctx context.Context, ws string, appID uint, req SetAppSourceRequest) (*SetAppSourceResult, error) {
+	var r SetAppSourceResult
+	return &r, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/source", ws, appID), req, &r)
+}
+
+// ResyncAppPipeline reloads the repository's pipelines.yaml: adopting one when the app has none,
+// and re-syncing the stored spec when it already has one.
+func (c *Client) ResyncAppPipeline(ctx context.Context, ws string, appID uint) (*ResyncPipelineResult, error) {
+	var r ResyncPipelineResult
+	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/pipeline/resync", ws, appID), nil, &r)
+}
+
 func (c *Client) DeleteApp(ctx context.Context, ws string, appID uint) error {
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d", ws, appID), nil)
 }
