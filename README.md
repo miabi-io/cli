@@ -5,6 +5,10 @@ Drive the deploy flow from a terminal or CI — `miabi apps deploy web --tag $SH
 updates the image, deploys, blocks until the deployment is terminal, and **exits
 non‑zero on failure**.
 
+It is also the tool that **installs and manages a Miabi host**: `miabi setup` stands the
+stack up on a machine and `miabi upgrade` moves it forward. Those commands talk to the
+local Docker socket, not to a panel — see [Managing a host](#managing-a-host).
+
 
 ## Install
 
@@ -128,6 +132,10 @@ miabi apps start|stop|restart [web]               # control the app's container
 miabi apps deployments [web]                      # deploy history — the NUMBER column
 miabi apps logs        [web] [--follow] [--tail 200]      # current logs (‑‑follow to stream)
 miabi apps logs        [web] --deployment 7               # a deployment's build logs
+miabi apps set-source  [web] (--image nginx --tag 1.27 | --git-repo <url> --git-ref main)
+                                                  # switch image <-> git in place; keeps domains,
+                                                  # env, volumes, databases and history
+miabi apps resync-pipeline [web]                  # reload the repo's pipelines.yaml (adopt or sync)
 miabi apps status      [web] [--deployment 7]
 miabi apps releases    [web]
 miabi apps rollback    [web] (--to <version> | --to-previous) [--yes]
@@ -139,6 +147,43 @@ miabi apps env import  [web] --from-file .env [--secret]  # "-" reads stdin
 miabi apply  -f stack.yaml [--prune] [--dry-run]  # declarative: converge to a manifest bundle
 miabi delete -f stack.yaml [--dry-run]            # delete exactly the resources the bundle names
 ```
+
+### Managing a host
+
+`setup`, `upgrade` and `stack …` are the exception to "API client": they act on the
+**machine they run on**, through its Docker socket, and never call the HTTP API. This is
+what `curl -fsSL https://get.miabi.io | sudo bash` installs and then runs.
+
+```
+miabi setup [--domain miabi.example.com] [--image miabi/miabi:1.7.3] [--yes]
+                                              # install, or converge an existing install
+miabi upgrade [component] [--version 1.8.0 | --image <ref>] [--yes]
+                                              # roll forward; rolls back if it never gets healthy
+miabi stack status                            # what runs, its health, drift from the manifest
+miabi stack restart [component] [--yes]       # restart in place, re-reading on-disk config
+miabi stack uninstall [--volumes] [--yes]     # --volumes also destroys the database
+miabi stack migrate-config                    # /etc/miabi/stack.yaml -> /etc/miabi/miabi.yaml
+```
+
+All of them need **root** and a Linux or macOS Docker host. `setup` is idempotent: re-run
+it and the stack converges to `/etc/miabi/miabi.yaml`, keeping the stored secrets. `-f,
+--file` points at a different manifest.
+
+`setup` and `upgrade` install the **latest published Miabi release**, looked up when the
+command runs. The version is not baked into the binary: the CLI releases on its own
+cadence, so a stamp would pin every install to whatever was current when the CLI was
+built, and an older CLI could never install today's Miabi. To choose a version yourself
+— or to install with no network at all:
+
+- `--version 1.8.0` (a leading `v` is fine) swaps **only the tag**, keeping the current
+  registry and repository — so it stays correct on a private registry, and on components
+  that are not `miabi/miabi`: `miabi upgrade miabi-gateway --version 0.14.0`.
+- `--image <ref>` replaces the reference outright. The two are mutually exclusive.
+
+A floating tag (`latest`, `edge`, `main`, …) **warns**, and not on style grounds: the
+rollout skips its automatic rollback when the previous reference equals the new one, so a
+failed `:latest` upgrade has nothing to return to — and drift against it cannot be
+detected, so the next upgrade reports "already at" and does nothing.
 
 ### Databases
 

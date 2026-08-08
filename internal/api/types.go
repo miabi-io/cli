@@ -43,11 +43,15 @@ type Workspace struct {
 // App is an application listing/detail (only the fields the CLI surfaces). Name
 // is the unique handle; DisplayName is the free-text label.
 type App struct {
-	ID               uint      `json:"id"`
-	Name             string    `json:"name"`
-	DisplayName      string    `json:"display_name"`
-	Image            string    `json:"image"`
-	Tag              string    `json:"tag"`
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	Image       string `json:"image"`
+	Tag         string `json:"tag"`
+	// SourceType is "image" or "git" — what the app builds from.
+	SourceType       string    `json:"source_type"`
+	GitRepo          string    `json:"git_repo,omitempty"`
+	GitRef           string    `json:"git_ref,omitempty"`
 	Status           string    `json:"status"`
 	CurrentReleaseID *uint     `json:"current_release_id"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -69,6 +73,52 @@ type CreateAppRequest struct {
 	BuildMethod string   `json:"build_method,omitempty"`
 	Port        int      `json:"port,omitempty"`
 	Command     []string `json:"command,omitempty"`
+}
+
+// SetAppSourceRequest is a whole-source replacement. Only the fields of the chosen source_type are
+// read; the server clears the other source's.
+type SetAppSourceRequest struct {
+	SourceType string `json:"source_type"`
+
+	Image      string `json:"image,omitempty"`
+	Tag        string `json:"tag,omitempty"`
+	RegistryID *uint  `json:"registry_id,omitempty"`
+
+	GitRepo         string `json:"git_repo,omitempty"`
+	GitRef          string `json:"git_ref,omitempty"`
+	GitRepositoryID *uint  `json:"git_repository_id,omitempty"`
+	BuildMethod     string `json:"build_method,omitempty"`
+	Builder         string `json:"builder,omitempty"`
+}
+
+// SourceChange reports what else moved when the source changed. None of it is visible in the app
+// record afterwards, so it is worth surfacing.
+type SourceChange struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	// Switched is false when only the details changed (a new tag, a different branch).
+	Switched bool `json:"switched"`
+	// PipelineRemoved is true when leaving git dropped a repo-owned pipeline.
+	PipelineRemoved bool `json:"pipeline_removed"`
+	// RedeployRequired is true when the running container no longer matches the source.
+	RedeployRequired bool `json:"redeploy_required"`
+}
+
+type SetAppSourceResult struct {
+	Application App          `json:"application"`
+	Change      SourceChange `json:"change"`
+}
+
+// ResyncPipelineResult reports the pipeline the app ended up bound to. Changed is false when the
+// repository's document already matched what was stored — a successful no-op, not a failure.
+type ResyncPipelineResult struct {
+	Pipeline *struct {
+		Name       string `json:"name"`
+		SourcePath string `json:"source_path"`
+		SourceRef  string `json:"source_ref"`
+	} `json:"pipeline"`
+	Changed bool `json:"changed"`
+	Adopted bool `json:"adopted"`
 }
 
 // Deployment is the deploy/rollback response and status object.
