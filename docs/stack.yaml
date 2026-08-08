@@ -37,12 +37,22 @@ spec:
   placement: auto # reuse a compatible instance if present, else provision a dedicated one
 ---
 apiVersion: miabi.io/v1
+kind: Registry
+metadata:
+  name: ghcr
+spec:
+  server: ghcr.io # omit for Docker Hub
+  username: org
+  password: "{{ .secrets.appkey }}" # keep the token in the vault, not in git
+---
+apiVersion: miabi.io/v1
 kind: Application
 metadata:
   name: web
 spec:
   image: ghcr.io/org/web
   tag: "1.4.0"
+  registry: ghcr # credential used to pull a private image (omit = anonymous)
   ports:
     - container: 8080
       scheme: http
@@ -56,6 +66,8 @@ spec:
   mounts:
     - volume: web-data
       path: /data
+  containerLabels: # stamped on the container, for label-reading tools (Traefik &c.)
+    traefik.enable: "true"
 ---
 apiVersion: miabi.io/v1
 kind: Domain
