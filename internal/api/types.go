@@ -325,6 +325,49 @@ type SecretReveal struct {
 	Value string `json:"value"`
 }
 
+// Config is a workspace configuration file set. Content never comes back on a
+// list or get — only keys, their sizes and the digest.
+type Config struct {
+	ID          uint           `json:"id"`
+	UID         string         `json:"uid"`
+	Name        string         `json:"name"`
+	DisplayName string         `json:"display_name"`
+	Description string         `json:"description"`
+	Digest      string         `json:"digest"`
+	Mode        string         `json:"mode"`
+	Sensitive   bool           `json:"sensitive"`
+	Delimiters  []string       `json:"delimiters,omitempty"`
+	Version     int            `json:"version"`
+	Managed     bool           `json:"managed"`
+	Keys        []string       `json:"keys"`
+	Sizes       map[string]int `json:"sizes"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+}
+
+type CreateConfigRequest struct {
+	Name        string            `json:"name"`
+	DisplayName string            `json:"display_name,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Data        map[string]string `json:"data"`
+	Mode        string            `json:"mode,omitempty"`
+	Sensitive   bool              `json:"sensitive,omitempty"`
+	Delimiters  []string          `json:"delimiters,omitempty"`
+}
+
+type UpdateConfigRequest struct {
+	Data        map[string]string `json:"data,omitempty"`
+	DisplayName string            `json:"display_name,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Mode        string            `json:"mode,omitempty"`
+	Delimiters  []string          `json:"delimiters,omitempty"`
+}
+
+// ConfigReveal is the decrypted file set (admin only, audited).
+type ConfigReveal struct {
+	Data map[string]string `json:"data"`
+}
+
 // SecretUsage is one app referencing a secret (GET .../secrets/{id}/usage).
 type SecretUsage struct {
 	ID   uint   `json:"id"`

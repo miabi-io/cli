@@ -446,6 +446,77 @@ func (c *Client) ImportEnv(ctx context.Context, ws string, appID uint, req Impor
 	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/env/import", ws, appID), req, nil)
 }
 
+// --- configs (workspace configuration files) -------------------------------
+
+// Configs lists a workspace's configs (keys and digests, never content).
+func (c *Client) Configs(ctx context.Context, ws string) ([]Config, error) {
+	var cfgs []Config
+	return cfgs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/configs?page=0&size=500", ws), &cfgs)
+}
+
+func (c *Client) Config(ctx context.Context, ws string, id uint) (*Config, error) {
+	var cfg Config
+	return &cfg, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/configs/%d", ws, id), &cfg)
+}
+
+func (c *Client) CreateConfig(ctx context.Context, ws string, req CreateConfigRequest) (*Config, error) {
+	var cfg Config
+	return &cfg, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/configs", ws), req, &cfg)
+}
+
+func (c *Client) UpdateConfig(ctx context.Context, ws string, id uint, req UpdateConfigRequest) (*Config, error) {
+	var cfg Config
+	return &cfg, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/configs/%d", ws, id), req, &cfg)
+}
+
+// ConfigData returns a config's decrypted files (admin only, audited).
+func (c *Client) ConfigData(ctx context.Context, ws string, id uint) (map[string]string, error) {
+	var r ConfigReveal
+	if err := c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/configs/%d/reveal", ws, id), &r); err != nil {
+		return nil, err
+	}
+	return r.Data, nil
+}
+
+func (c *Client) ConfigUsage(ctx context.Context, ws string, id uint) ([]SecretUsage, error) {
+	var u []SecretUsage
+	return u, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/configs/%d/usage", ws, id), &u)
+}
+
+func (c *Client) DeleteConfig(ctx context.Context, ws string, id uint) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/configs/%d", ws, id), nil)
+}
+
+// FindConfigByName returns the named config, or nil when none exists (used by
+// `set` to choose between create and replace).
+func (c *Client) FindConfigByName(ctx context.Context, ws, name string) (*Config, error) {
+	cfgs, err := c.Configs(ctx, ws)
+	if err != nil {
+		return nil, err
+	}
+	for i := range cfgs {
+		if cfgs[i].Name == name {
+			return &cfgs[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// ResolveConfigID turns a config name (or numeric id) into its numeric id.
+func (c *Client) ResolveConfigID(ctx context.Context, ws, ref string) (uint, error) {
+	if id, err := strconv.ParseUint(ref, 10, 64); err == nil {
+		return uint(id), nil
+	}
+	cfg, err := c.FindConfigByName(ctx, ws, ref)
+	if err != nil {
+		return 0, err
+	}
+	if cfg == nil {
+		return 0, fmt.Errorf("config %q not found", ref)
+	}
+	return cfg.ID, nil
+}
+
 // --- secrets (workspace Vault) ---------------------------------------------
 
 // Secrets lists a workspace's secrets (names + metadata, never values). The list
