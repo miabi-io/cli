@@ -4,6 +4,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -11,7 +12,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jkaninda/okapi/client"
@@ -53,13 +56,17 @@ func New(o Options) (*Client, error) {
 		tlsCfg.RootCAs = pool
 	}
 	httpc := &http.Client{
-		Timeout:   30 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: tlsCfg},
+		Timeout:       30 * time.Second,
+		Transport:     &http.Transport{TLSClientConfig: tlsCfg},
+		CheckRedirect: checkAPIRedirect,
 	}
 	opts := []client.Option{
 		client.WithHTTPClient(httpc),
 		client.WithBearerToken(o.Token),
 		client.WithUserAgent("miabi-cli/" + Version),
+		// Asking for JSON explicitly makes proxies and SSO gateways answer with an
+		// error rather than the HTML sign-in page they hand browsers.
+		client.WithHeader("Accept", "application/json"),
 		// Safe to retry: every call below is a GET or an idempotent action.
 		client.WithRetry(client.RetryPolicy{MaxAttempts: 3, BaseDelay: 200 * time.Millisecond, MaxDelay: 2 * time.Second}),
 	}
@@ -67,6 +74,19 @@ func New(o Options) (*Client, error) {
 		opts = append(opts, client.WithMiddleware(client.LoggingMiddleware(os.Stderr)))
 	}
 	return &Client{c: client.New(o.BaseURL, opts...), verbose: o.Verbose}, nil
+}
+
+func checkAPIRedirect(req *http.Request, via []*http.Request) error {
+	orig := via[0]
+	switch {
+	case req.URL.Host != orig.URL.Host:
+		return fmt.Errorf("redirected to %s://%s — the server URL is not serving the Miabi API directly (a proxy or SSO gateway is intercepting it)", req.URL.Scheme, req.URL.Host)
+	case req.Method != orig.Method:
+		return fmt.Errorf("%s was redirected to %s and rewritten as %s — use the panel's canonical URL (https://, no redirect) as the server", orig.Method, req.URL.Scheme+"://"+req.URL.Host, req.Method)
+	case len(via) >= 5:
+		return fmt.Errorf("too many redirects for %s", orig.URL)
+	}
+	return nil
 }
 
 // APIError is the server's structured error envelope.
@@ -100,31 +120,54 @@ type envelope struct {
 func (c *Client) do(rb *client.RequestBuilder, out any) error {
 	resp, err := rb.Do()
 	if err != nil {
-		// Transport-level or non-2xx (okapi returns *client.HTTPError). Try to
-		// surface the structured envelope from the body.
-		if he, ok := err.(*client.HTTPError); ok {
-			var env envelope
-			if json.Unmarshal(he.Body, &env) == nil && env.Error != nil {
-				return env.Error
-			}
-			return fmt.Errorf("HTTP %d: %s", he.StatusCode, string(he.Body))
-		}
 		return err
 	}
-	if out == nil {
-		return nil
-	}
+
+	empty := len(bytes.TrimSpace(resp.Body)) == 0
 	var env envelope
-	if err := json.Unmarshal(resp.Body, &env); err != nil {
-		return fmt.Errorf("decode response: %w", err)
-	}
-	if env.Error != nil {
+	switch {
+	case !empty && json.Unmarshal(resp.Body, &env) != nil:
+		return notAPIResponse(resp)
+	case env.Error != nil:
 		return env.Error
-	}
-	if len(env.Data) == 0 || string(env.Data) == "null" {
+	case !resp.IsSuccess():
+		return fmt.Errorf("%s %s: HTTP %d", resp.Method, resp.URL, resp.StatusCode)
+	case out == nil || len(env.Data) == 0 || string(env.Data) == "null":
 		return nil
 	}
 	return json.Unmarshal(env.Data, out)
+}
+
+// notAPIResponse explains a body that is not the API's JSON envelope. Every /api
+// route answers JSON, so HTML here was written by something else — a proxy or SSO
+// gateway sign-in page, a WAF interstitial, or a URL that is not the panel at all.
+func notAPIResponse(resp *client.Response) error {
+	return fmt.Errorf("%s %s returned HTTP %d, %s — that is not the Miabi API. Check the server URL and that /api/ requests reach the panel untouched (no SSO gateway, WAF, or captive portal in front)",
+		resp.Method, resp.URL, resp.StatusCode, describeBody(resp.Header.Get("Content-Type"), resp.Body))
+}
+
+var titleRe = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+
+// describeBody names a non-JSON body in one clause: its media type plus the HTML
+// <title> (or leading text), which usually identifies whatever answered instead.
+func describeBody(contentType string, body []byte) string {
+	kind, _, _ := strings.Cut(contentType, ";")
+	if kind = strings.TrimSpace(kind); kind == "" {
+		kind = "an untyped body"
+	}
+	hint := ""
+	if m := titleRe.FindSubmatch(body); m != nil {
+		hint = string(m[1])
+	} else if !strings.Contains(kind, "html") {
+		hint = string(body)
+	}
+	if hint = strings.Join(strings.Fields(hint), " "); hint == "" {
+		return kind
+	}
+	if len(hint) > 120 {
+		hint = hint[:120] + "…"
+	}
+	return fmt.Sprintf("%s (%q)", kind, hint)
 }
 
 func (c *Client) get(ctx context.Context, path string, out any) error {
