@@ -33,15 +33,15 @@ brew install miabi
 **Go:**
 
 ```bash
-go install github.com/miabi-io/miabi-cli@latest   # installs the `miabi` binary
+go install github.com/miabi-io/cli@latest   # installs the `miabi` binary
 ```
 
-**Prebuilt binary** — download from the [GitHub Releases](https://github.com/miabi-io/miabi-cli/releases/latest)
+**Prebuilt binary** — download from the [GitHub Releases](https://github.com/miabi-io/cli/releases/latest)
 page, or grab the archive for your platform directly (Linux x86_64 shown):
 
 ```bash
 VERSION=0.4.0
-curl -fsSL "https://github.com/miabi-io/miabi-cli/releases/download/v${VERSION}/miabi_${VERSION}_linux_amd64.tar.gz" \
+curl -fsSL "https://github.com/miabi-io/cli/releases/download/v${VERSION}/miabi_${VERSION}_linux_amd64.tar.gz" \
   | tar -xz miabi && sudo mv miabi /usr/local/bin/
 miabi --version
 ```
@@ -49,19 +49,19 @@ miabi --version
 (Swap `linux_amd64` for `linux_arm64`, `darwin_amd64`, `darwin_arm64`, or use the `.zip` for Windows.)
 
 **Docker** — no install at all; handy in CI. Published to Docker Hub and mirrored to GHCR
-(`ghcr.io/miabi-io/miabi-cli`):
+(`ghcr.io/miabi-io/cli`):
 
 ```bash
 # check the connection
-docker run --rm -e MIABI_SERVER -e MIABI_TOKEN miabi/miabi-cli:latest whoami
+docker run --rm -e MIABI_SERVER -e MIABI_TOKEN miabi/cli:latest whoami
 
 # deploy from a pipeline — exits non-zero if the rollout fails
 docker run --rm -e MIABI_SERVER -e MIABI_TOKEN \
-  miabi/miabi-cli:latest apps deploy web --tag "$GIT_SHA" --wait
+  miabi/cli:latest apps deploy web --tag "$GIT_SHA" --wait
 
 # mount a manifest to apply it declaratively
 docker run --rm -e MIABI_SERVER -e MIABI_TOKEN -v "$PWD:/work" -w /work \
-  miabi/miabi-cli:latest apply -f stack.yaml
+  miabi/cli:latest apply -f stack.yaml
 ```
 
 ## Authenticate
@@ -319,7 +319,7 @@ when the agent doesn't name one.
 
 ```yaml
 - run: |
-    go install github.com/miabi-io/miabi-cli@latest
+    go install github.com/miabi-io/cli@latest
     miabi apps deploy web --tag "${{ github.sha }}" --wait
   env:
     MIABI_SERVER:   ${{ vars.MIABI_SERVER }}

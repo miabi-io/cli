@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/miabi-io/miabi-cli/internal/ui"
+	"github.com/miabi-io/cli/internal/ui"
 )
 
 // cliUI renders stackcmd's output the way the rest of the CLI looks — colored, with the same

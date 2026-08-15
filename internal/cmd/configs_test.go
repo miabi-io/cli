@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/miabi-io/miabi-cli/internal/api"
+	"github.com/miabi-io/cli/internal/api"
 )
 
 func TestCollectFilesInfersKeyFromBasename(t *testing.T) {

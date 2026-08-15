@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/miabi-io/miabi-cli/internal/api"
+	"github.com/miabi-io/cli/internal/api"
 	"github.com/spf13/cobra"
 )
 
