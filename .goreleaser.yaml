@@ -17,7 +17,7 @@ builds:
     goarch: [amd64, arm64]
     ldflags:
       - -s -w
-      - -X github.com/miabi-io/miabi-cli/internal/cmd.version={{ .Version }}
+      - -X github.com/miabi-io/cli/internal/cmd.version={{ .Version }}
 
 archives:
   - id: miabi
@@ -65,4 +65,4 @@ changelog:
 release:
   github:
     owner: miabi-io
-    name: miabi-cli
+    name: cli

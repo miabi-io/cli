@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/miabi-io/miabi-cli/internal/mcp"
+	"github.com/miabi-io/cli/internal/mcp"
 	"github.com/spf13/cobra"
 )
 

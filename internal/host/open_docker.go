@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/miabi-io/miabi-cli/internal/dockerclient"
+	"github.com/miabi-io/cli/internal/dockerclient"
 	"github.com/miabi-io/miabi/pkg/stack"
 )
 

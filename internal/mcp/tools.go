@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/miabi-io/miabi-cli/internal/api"
+	"github.com/miabi-io/cli/internal/api"
 )
 
 // tool is one MCP tool: its advertised definition, whether it only reads, and

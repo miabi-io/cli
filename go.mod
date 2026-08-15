@@ -1,4 +1,4 @@
-module github.com/miabi-io/miabi-cli
+module github.com/miabi-io/cli
 
 go 1.26.3
 

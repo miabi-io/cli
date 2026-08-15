@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/miabi-io/miabi-cli/internal/host"
-	"github.com/miabi-io/miabi-cli/internal/release"
-	"github.com/miabi-io/miabi-cli/internal/ui"
+	"github.com/miabi-io/cli/internal/host"
+	"github.com/miabi-io/cli/internal/release"
+	"github.com/miabi-io/cli/internal/ui"
 	"github.com/miabi-io/miabi/pkg/stack"
 	"github.com/miabi-io/miabi/pkg/stack/stackcmd"
 	"github.com/spf13/cobra"

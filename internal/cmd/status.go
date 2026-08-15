@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 
-	"github.com/miabi-io/miabi-cli/internal/ui"
+	"github.com/miabi-io/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 

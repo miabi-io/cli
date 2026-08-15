@@ -3,6 +3,6 @@
 // It imports nothing from the server; the public API is the only contract.
 package main
 
-import "github.com/miabi-io/miabi-cli/internal/cmd"
+import "github.com/miabi-io/cli/internal/cmd"
 
 func main() { cmd.Execute() }

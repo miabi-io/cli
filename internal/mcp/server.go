@@ -9,7 +9,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/miabi-io/miabi-cli/internal/api"
+	"github.com/miabi-io/cli/internal/api"
 )
 
 // Server serves MCP over a stdio pair or HTTP. It holds one API client and a
