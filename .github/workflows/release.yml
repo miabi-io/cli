@@ -67,9 +67,6 @@ jobs:
           push: true
           build-args: |
             VERSION=${{ env.VERSION }}
-          # The miabi-cli names are legacy aliases kept in sync with the repo
-          # rename: a registry has no redirect, so dropping them would freeze
-          # existing pulls at the last release under the old name.
           tags: |
             miabi/cli:latest
             miabi/cli:${{ env.VERSION }}
