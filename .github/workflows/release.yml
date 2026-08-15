@@ -75,8 +75,3 @@ jobs:
             miabi/cli:${{ env.VERSION }}
             ghcr.io/miabi-io/cli:latest
             ghcr.io/miabi-io/cli:${{ env.VERSION }}
-            
-            miabi/miabi-cli:latest
-            miabi/miabi-cli:${{ env.VERSION }}
-            ghcr.io/miabi-io/miabi-cli:latest
-            ghcr.io/miabi-io/miabi-cli:${{ env.VERSION }}
