@@ -180,6 +180,44 @@ type DeployRequest struct {
 	Tag        string `json:"tag,omitempty"`
 	Strategy   string `json:"strategy,omitempty"`
 	RegistryID *uint  `json:"registry_id,omitempty"`
+	// NoCache rebuilds every layer for this deploy only (git-source apps).
+	NoCache bool `json:"no_cache,omitempty"`
+}
+
+// Pipeline is a CI/CD pipeline definition in the workspace.
+type Pipeline struct {
+	ID          uint      `json:"id"`
+	Name        string    `json:"name"`
+	DisplayName string    `json:"display_name"`
+	Enabled     bool      `json:"enabled"`
+	Source      string    `json:"source,omitempty"` // manual | repo
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// PipelineRun is one execution of a pipeline.
+type PipelineRun struct {
+	ID         uint       `json:"id"`
+	PipelineID uint       `json:"pipeline_id"`
+	Number     int        `json:"number"`
+	Status     string     `json:"status"`
+	Trigger    string     `json:"trigger,omitempty"`
+	Branch     string     `json:"branch,omitempty"`
+	Commit     string     `json:"commit,omitempty"`
+	NoCache    bool       `json:"no_cache,omitempty"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+// TriggerPipelineRequest is the body of POST .../pipelines/{id}/trigger.
+type TriggerPipelineRequest struct {
+	Branch  string `json:"branch,omitempty"`
+	Commit  string `json:"commit,omitempty"`
+	NoCache bool   `json:"no_cache,omitempty"`
+}
+
+// RerunPipelineRequest is the body of POST .../pipeline-runs/{id}/rerun.
+type RerunPipelineRequest struct {
+	NoCache bool `json:"no_cache,omitempty"`
 }
 
 // RollbackRequest is the body of POST .../rollback.

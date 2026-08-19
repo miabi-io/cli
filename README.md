@@ -127,7 +127,7 @@ miabi use web                      # bind a default app (per workspace)
 
 miabi apps ls                      # list applications (→ marks the bound app)
 miabi apps create web (--image miabi/guestbook [--tag 1.0] | --git-repo <url> [--git-ref main]) [--port 3000] [--use]
-miabi apps deploy      [web] --tag $SHA [--strategy rolling] [--wait] [--timeout 10m]
+miabi apps deploy      [web] --tag $SHA [--strategy rolling] [--no-cache] [--wait] [--timeout 10m]
 miabi apps start|stop|restart [web]               # control the app's container
 miabi apps deployments [web]                      # deploy history — the NUMBER column
 miabi apps logs        [web] [--follow] [--tail 200]      # current logs (‑‑follow to stream)
@@ -136,6 +136,7 @@ miabi apps set-source  [web] (--image nginx --tag 1.27 | --git-repo <url> --git-
                                                   # switch image <-> git in place; keeps domains,
                                                   # env, volumes, databases and history
 miabi apps resync-pipeline [web]                  # reload the repo's pipelines.yaml (adopt or sync)
+miabi apps invalidate-cache [web]                 # next build rebuilds every layer
 miabi apps status      [web] [--deployment 7]
 miabi apps releases    [web]
 miabi apps rollback    [web] (--to <version> | --to-previous) [--yes]
@@ -143,6 +144,10 @@ miabi apps env ls      [web]                              # secret values are ma
 miabi apps env set     [web] KEY=VALUE [--secret]
 miabi apps env set     [web] KEY --from-file f [--secret] # value from a file/stdin — no shell history
 miabi apps env import  [web] --from-file .env [--secret]  # "-" reads stdin
+
+miabi pipeline ls                                 # CI/CD pipelines in the workspace
+miabi pipeline run   <pipeline> [--branch main] [--commit <sha>] [--no-cache]
+miabi pipeline rerun <run-id> [--no-cache]        # same commit again, optionally cold
 
 miabi apply  -f stack.yaml [--prune] [--dry-run]  # declarative: converge to a manifest bundle
 miabi delete -f stack.yaml [--dry-run]            # delete exactly the resources the bundle names

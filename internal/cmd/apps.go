@@ -35,7 +35,9 @@ func init() {
 
 	appRmCmd.Flags().BoolVarP(&appRmYes, "yes", "y", false, "skip the confirmation prompt")
 
-	appCmd.AddCommand(appLsCmd, appCreateCmd, appRmCmd, appStartCmd, appStopCmd, appRestartCmd)
+	appInvalidateCacheCmd.ValidArgsFunction = completeApps
+
+	appCmd.AddCommand(appLsCmd, appCreateCmd, appRmCmd, appStartCmd, appStopCmd, appRestartCmd, appInvalidateCacheCmd)
 	rootCmd.AddCommand(appCmd)
 }
 
@@ -52,6 +54,37 @@ var appCmd = &cobra.Command{
 		"  miabi apps logs web\n" +
 		"  miabi apps restart web\n" +
 		"  miabi apps rm web",
+}
+
+var appInvalidateCacheCmd = &cobra.Command{
+	Use:     "invalidate-cache [app]",
+	Aliases: []string{"invalidate-build-cache"},
+	Short:   "Invalidate the application's build cache",
+	Long: "Names a new build cache generation, so the next build — a deploy or a pipeline\n" +
+		"run — rebuilds every layer and repopulates the cache. Nothing is deleted, and a\n" +
+		"build already in flight is unaffected.",
+	Example: "  miabi apps invalidate-cache web",
+	Args:    cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		c, eff, err := newClient()
+		if err != nil {
+			return err
+		}
+		ws, err := workspaceRef(ctx, c, eff)
+		if err != nil {
+			return err
+		}
+		appID, appRef, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		if err != nil {
+			return err
+		}
+		if err := c.InvalidateBuildCache(ctx, ws, appID); err != nil {
+			return err
+		}
+		ui.Success("Build cache of %s invalidated — the next build rebuilds every layer", ui.Bold(appRef))
+		return nil
+	},
 }
 
 var appCreateCmd = &cobra.Command{

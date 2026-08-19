@@ -282,11 +282,35 @@ func (c *Client) ResolveAppID(ctx context.Context, ws string, ref string) (uint,
 	return 0, fmt.Errorf("application %q not found in this workspace", ref)
 }
 
-// --- deploy / rollback / releases -----------------------------------------
+//  deploy / rollback / releases
 
 func (c *Client) Deploy(ctx context.Context, ws string, appID uint, req DeployRequest) (*Deployment, error) {
 	var d Deployment
 	return &d, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/deploy", ws, appID), req, &d)
+}
+
+// InvalidateBuildCache names a new build cache generation for the app, so the next build (a deploy
+// or a pipeline run) rebuilds every layer and repopulates it.
+func (c *Client) InvalidateBuildCache(ctx context.Context, ws string, appID uint) error {
+	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/build-cache/invalidate", ws, appID), nil, nil)
+}
+
+// Pipelines lists the workspace's pipeline definitions.
+func (c *Client) Pipelines(ctx context.Context, ws string) ([]Pipeline, error) {
+	var ps []Pipeline
+	return ps, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/pipelines", ws), &ps)
+}
+
+// TriggerPipeline starts a manual run. The pipeline is addressed by numeric id or uid.
+func (c *Client) TriggerPipeline(ctx context.Context, ws, pipeline string, req TriggerPipelineRequest) (*PipelineRun, error) {
+	var r PipelineRun
+	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/pipelines/%s/trigger", ws, pipeline), req, &r)
+}
+
+// RerunPipelineRun re-runs an earlier run at the same ref and commit.
+func (c *Client) RerunPipelineRun(ctx context.Context, ws string, runID uint, req RerunPipelineRequest) (*PipelineRun, error) {
+	var r PipelineRun
+	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/pipeline-runs/%d/rerun", ws, runID), req, &r)
 }
 
 // appAction posts to an app lifecycle sub-path (start|stop|restart).
@@ -472,7 +496,7 @@ func (c *Client) DeleteLogicalDatabase(ctx context.Context, ws string, id, dbID 
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/databases/%d/databases/%d", ws, id, dbID), nil)
 }
 
-// --- env -------------------------------------------------------------------
+//  env
 
 // EnvVars lists an application's environment variables. Secret values come back
 // masked — the API never returns them in plaintext.
@@ -560,7 +584,7 @@ func (c *Client) ResolveConfigID(ctx context.Context, ws, ref string) (uint, err
 	return cfg.ID, nil
 }
 
-// --- secrets (workspace Vault) ---------------------------------------------
+//  secrets (workspace Vault)
 
 // Secrets lists a workspace's secrets (names + metadata, never values). The list
 // endpoint is paginated; a large page size fetches them in one call.
