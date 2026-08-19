@@ -15,6 +15,7 @@ var (
 	deployStrategy string
 	deployWait     bool
 	deployTimeout  time.Duration
+	deployNoCache  bool
 )
 
 func init() {
@@ -22,13 +23,14 @@ func init() {
 	f.StringVar(&deployTag, "tag", "", "image tag to deploy (e.g. the git SHA)")
 	f.StringVar(&deployStrategy, "strategy", "", "deploy strategy: recreate | rolling | canary")
 	f.BoolVar(&deployWait, "wait", false, "block until the deployment is terminal; non-zero exit on failure")
+	f.BoolVar(&deployNoCache, "no-cache", false, "rebuild every layer, ignoring the build cache (git-source apps)")
 	f.DurationVar(&deployTimeout, "timeout", 10*time.Minute, "max time to wait with --wait")
 	deployCmd.ValidArgsFunction = completeApps
 	appCmd.AddCommand(deployCmd)
 }
 
 var deployCmd = &cobra.Command{
-	Use:   "deploy [app] [--tag <tag>] [--wait]",
+	Use:   "deploy [app] [--tag <tag>] [--no-cache] [--wait]",
 	Short: "Deploy an application (optionally waiting for the result)",
 	Long: "Triggers a deployment of the app (positional, or the app bound by `miabi use`).\n" +
 		"With --tag, deploys that image tag (the common CI flow). With --wait, blocks\n" +
@@ -50,7 +52,7 @@ var deployCmd = &cobra.Command{
 			return err
 		}
 
-		dep, err := c.Deploy(ctx, ws, appID, api.DeployRequest{Tag: deployTag, Strategy: deployStrategy})
+		dep, err := c.Deploy(ctx, ws, appID, api.DeployRequest{Tag: deployTag, Strategy: deployStrategy, NoCache: deployNoCache})
 		if err != nil {
 			return err
 		}
