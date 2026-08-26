@@ -185,6 +185,16 @@ func (c *Client) post(ctx context.Context, path string, body, out any) error {
 	return c.do(rb, out)
 }
 
+// postLong is post with a longer deadline, for endpoints that do their work
+// inline instead of handing it to the worker.
+func (c *Client) postLong(ctx context.Context, path string, body, out any, timeout time.Duration) error {
+	rb := c.c.Post(path).WithContext(ctx).Timeout(timeout)
+	if body != nil {
+		rb = rb.JSONBody(body)
+	}
+	return c.do(rb, out)
+}
+
 func (c *Client) put(ctx context.Context, path string, body, out any) error {
 	rb := c.c.Put(path).WithContext(ctx)
 	if body != nil {
@@ -740,6 +750,97 @@ func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
 		return nil, notAPIResponse(resp)
 	}
 	return resp.Body, nil
+}
+
+// --- volume backups (S3) -----------------------------------------------------
+
+// RestoreTimeout bounds a restore. The panel runs the restore inline in the
+// request — it pulls an image and unpacks an archive before answering — so the
+// 30s control-plane deadline would abort a restore that is going fine.
+const RestoreTimeout = 60 * time.Minute
+
+// VolumeBackups lists a volume's backup history, newest first as the panel
+// returns it.
+func (c *Client) VolumeBackups(ctx context.Context, ws string, id uint) ([]VolumeBackup, error) {
+	var bs []VolumeBackup
+	return bs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups", ws, id), &bs)
+}
+
+// VolumeBackupConfigured reports whether the workspace has an S3 target, which
+// volume backups require.
+func (c *Client) VolumeBackupConfigured(ctx context.Context, ws string, id uint) (bool, error) {
+	var st VolumeBackupStatus
+	err := c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/status", ws, id), &st)
+	return st.S3Configured, err
+}
+
+// RunVolumeBackup enqueues a backup and returns the pending record. The work
+// happens in the panel's worker, so the record is not finished when this returns.
+func (c *Client) RunVolumeBackup(ctx context.Context, ws string, id uint) (*VolumeBackup, error) {
+	var b VolumeBackup
+	return &b, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups", ws, id), nil, &b)
+}
+
+// RestoreVolumeBackup overwrites a volume's contents from one of its backups.
+// The call blocks for the whole restore.
+func (c *Client) RestoreVolumeBackup(ctx context.Context, ws string, id, backupID uint) error {
+	return c.postLong(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d/restore", ws, id, backupID), nil, nil, RestoreTimeout)
+}
+
+func (c *Client) DeleteVolumeBackup(ctx context.Context, ws string, id, backupID uint) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d", ws, id, backupID), nil)
+}
+
+// VolumeBackupLogs downloads a run's full log, which the panel serves as a file
+// rather than in the envelope.
+func (c *Client) VolumeBackupLogs(ctx context.Context, ws string, id, backupID uint) ([]byte, error) {
+	return c.getRaw(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d/logs/download", ws, id, backupID))
+}
+
+// FindVolumeBackup returns one backup from the volume's history. There is no
+// single-backup endpoint, so this filters the list.
+func (c *Client) FindVolumeBackup(ctx context.Context, ws string, id, backupID uint) (*VolumeBackup, error) {
+	bs, err := c.VolumeBackups(ctx, ws, id)
+	if err != nil {
+		return nil, err
+	}
+	for i := range bs {
+		if bs[i].ID == backupID {
+			return &bs[i], nil
+		}
+	}
+	return nil, fmt.Errorf("backup %d not found for this volume", backupID)
+}
+
+// volumeBackupPollInterval is how often --wait re-reads the history. A variable
+// so the tests do not have to sleep through real backoff.
+var volumeBackupPollInterval = 3 * time.Second
+
+// WaitForVolumeBackup polls until the run settles, reporting each status change.
+func (c *Client) WaitForVolumeBackup(ctx context.Context, ws string, id, backupID uint, onUpdate func(status string)) (*VolumeBackup, error) {
+	ticker := time.NewTicker(volumeBackupPollInterval)
+	defer ticker.Stop()
+	last := ""
+	for {
+		b, err := c.FindVolumeBackup(ctx, ws, id, backupID)
+		if err != nil {
+			return nil, err
+		}
+		if b.Status != last {
+			last = b.Status
+			if onUpdate != nil {
+				onUpdate(b.Status)
+			}
+		}
+		if IsBackupTerminal(b.Status) {
+			return b, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 //  secrets (workspace Vault)

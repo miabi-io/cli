@@ -101,7 +101,7 @@ func Fail(format string, a ...any) {
 // red for failure, yellow for anything in-progress/pending.
 func Status(s string) string {
 	switch strings.ToLower(s) {
-	case "succeeded", "running", "active", "healthy":
+	case "succeeded", "completed", "running", "active", "healthy":
 		return Green(s)
 	case "failed", "error", "crashed", "unhealthy":
 		return Red(s)

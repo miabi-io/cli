@@ -416,6 +416,51 @@ type VolumeUploadResult struct {
 	Path string `json:"path"`
 }
 
+// VolumeBackup is one backup run of a volume's contents to S3.
+type VolumeBackup struct {
+	ID          uint `json:"id"`
+	WorkspaceID uint `json:"workspace_id"`
+	VolumeID    uint `json:"volume_id"`
+	ServerID    uint `json:"server_id"`
+	// VolumeName is the Docker volume that was archived, not the handle.
+	VolumeName string `json:"volume_name"`
+	Status     string `json:"status"`  // pending | running | completed | failed
+	Trigger    string `json:"trigger"` // manual | scheduled
+	S3Bucket   string `json:"s3_bucket,omitempty"`
+	S3Path     string `json:"s3_path,omitempty"`
+	Filename   string `json:"filename,omitempty"`
+	SizeBytes  int64  `json:"size_bytes"`
+	// Logs is the tail the record carries; the full log is a separate download.
+	Logs       string     `json:"logs,omitempty"`
+	Error      string     `json:"error,omitempty"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+// Backup-run statuses. These are NOT the deploy statuses: "running" is terminal
+// for a deployment and in-flight for a backup, so they need their own
+// classification.
+const (
+	BackupPending   = "pending"
+	BackupRunning   = "running"
+	BackupCompleted = "completed"
+	BackupFailed    = "failed"
+)
+
+// IsBackupTerminal reports whether a backup run has settled.
+func IsBackupTerminal(status string) bool {
+	return status == BackupCompleted || status == BackupFailed
+}
+
+// IsBackupFailure reports a terminal backup failure.
+func IsBackupFailure(status string) bool { return status == BackupFailed }
+
+// VolumeBackupStatus is GET .../volumes/{id}/backups/status.
+type VolumeBackupStatus struct {
+	S3Configured bool `json:"s3_configured"`
+}
+
 // AttachVolumeRequest is the body of POST .../apps/{id}/volumes.
 type AttachVolumeRequest struct {
 	VolumeID uint   `json:"volume_id"`

@@ -275,6 +275,32 @@ upload at 512 MiB — `miabi db` is the right tool for a database dump, not this
 `rm-file` on a directory removes everything under it; the prompt says how many
 entries that is.
 
+#### Volume backups (S3)
+
+Archive a volume's contents to the workspace's S3 target and restore them.
+Configure S3 in the panel's backup settings first — without it every call here
+is refused. Backups are addressed by the numeric `ID` the listing shows.
+
+```
+miabi volumes backups web-data                     # history
+miabi volumes backups run web-data [--wait] [--timeout 1h]
+miabi volumes backups logs web-data 42             # a run's full log
+miabi volumes backups restore web-data 42 [--yes]  # overwrites the volume
+miabi volumes backups rm web-data 42 [--yes]       # forgets the run; keeps the object
+```
+
+`run` hands the work to the panel's worker and returns while the run is still
+pending. `--wait` blocks until it settles and **exits non-zero if it fails**, so
+a CI step can depend on it.
+
+`restore` overwrites the volume's current contents and does **not** stop the apps
+mounting it — stop them yourself unless the workload tolerates its filesystem
+changing underneath. The panel restores inline, so the command blocks until the
+restore finishes.
+
+`rm` deletes the record, not the archive: the panel has no S3 delete, so reclaim
+bucket storage with a lifecycle rule.
+
 ### Secrets
 
 The workspace **vault**: values encrypted at rest, write-only over the API, and

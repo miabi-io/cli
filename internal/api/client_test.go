@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A page served in front of the panel (SSO gateway, WAF, wrong host) must be
@@ -320,5 +321,60 @@ func TestUploadVolumeFileSendsMultipart(t *testing.T) {
 	}
 	if !gotBoundary || gotDir != "conf" || gotName != "app.conf" || gotContent != "listen 80;\n" {
 		t.Errorf("multipart = (%t, dir %q, name %q, content %q)", gotBoundary, gotDir, gotName, gotContent)
+	}
+}
+
+// The wait polls the history until the run settles. "running" must not end it:
+// that is terminal for a deployment, not for a backup.
+func TestWaitForVolumeBackup(t *testing.T) {
+	statuses := []string{"pending", "running", "running", "completed"}
+	var polls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		s := statuses[min(polls, len(statuses)-1)]
+		polls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":[{"id":42,"status":"` + s + `","size_bytes":2048}]}`))
+	}))
+	defer srv.Close()
+
+	c, err := New(Options{BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Poll fast: the point is the state machine, not the pacing.
+	volumeBackupPollInterval = time.Millisecond
+	t.Cleanup(func() { volumeBackupPollInterval = 3 * time.Second })
+
+	var seen []string
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	final, err := c.WaitForVolumeBackup(ctx, "ws", 7, 42, func(s string) { seen = append(seen, s) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final.Status != "completed" || final.SizeBytes != 2048 {
+		t.Errorf("final = %+v, want the completed record", final)
+	}
+	// pending -> running -> completed; the repeated "running" is not re-reported.
+	if strings.Join(seen, ",") != "pending,running,completed" {
+		t.Errorf("updates = %v, want each change once", seen)
+	}
+}
+
+// A backup id absent from the history is a user error, not an empty result.
+func TestFindVolumeBackupMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":[{"id":1,"status":"completed"}]}`))
+	}))
+	defer srv.Close()
+
+	c, err := New(Options{BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.FindVolumeBackup(context.Background(), "ws", 7, 99); err == nil ||
+		!strings.Contains(err.Error(), "backup 99 not found") {
+		t.Fatalf("error = %v, want a not-found naming the id", err)
 	}
 }
