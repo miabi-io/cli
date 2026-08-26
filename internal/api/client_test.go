@@ -139,3 +139,75 @@ func TestEnvelopeStillDecodes(t *testing.T) {
 		t.Errorf("token = %q, want tok-123", tok.Token)
 	}
 }
+
+// The volume get/delete endpoints address volumes by numeric id, so a name has
+// to be resolved from the listing before any call is made.
+func TestResolveVolumeID(t *testing.T) {
+	var listed int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/volumes") {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		listed++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":[{"id":7,"name":"web-data"},{"id":9,"name":"cache"}]}`))
+	}))
+	defer srv.Close()
+
+	c, err := New(Options{BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	id, err := c.ResolveVolumeID(ctx, "ws", "cache")
+	if err != nil {
+		t.Fatalf("resolve by name: %v", err)
+	}
+	if id != 9 {
+		t.Errorf("id = %d, want 9", id)
+	}
+
+	// A numeric reference is taken as the id itself — no listing needed.
+	before := listed
+	if id, err = c.ResolveVolumeID(ctx, "ws", "42"); err != nil || id != 42 {
+		t.Fatalf("resolve by id = %d, %v; want 42, nil", id, err)
+	}
+	if listed != before {
+		t.Errorf("a numeric reference listed volumes %d extra time(s)", listed-before)
+	}
+
+	if _, err = c.ResolveVolumeID(ctx, "ws", "nope"); err == nil || !strings.Contains(err.Error(), `volume "nope" not found`) {
+		t.Fatalf("error = %v, want a not-found error naming the volume", err)
+	}
+}
+
+// A volume that has never been measured must decode with a nil UsedMeasuredAt,
+// which is what separates "empty" from "unknown" in the listing.
+func TestVolumeDetailDecodes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"id":7,"name":"web-data","size_bytes":1048576,
+			"used_bytes":0,"driver":"nfs","access_mode":"rwx","exists":true,"in_use":true,
+			"used_by":[{"app_id":3,"app_name":"web","path":"/var/lib/data"}]}}`))
+	}))
+	defer srv.Close()
+
+	c, err := New(Options{BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := c.Volume(context.Background(), "ws", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.UsedMeasuredAt != nil {
+		t.Errorf("UsedMeasuredAt = %v, want nil for a never-measured volume", v.UsedMeasuredAt)
+	}
+	if !v.InUse || len(v.UsedBy) != 1 || v.UsedBy[0].Path != "/var/lib/data" {
+		t.Errorf("usage = %+v, want one mount at /var/lib/data", v.UsedBy)
+	}
+	if v.AccessMode != "rwx" || v.SizeBytes != 1048576 {
+		t.Errorf("volume = %+v, want the embedded fields decoded", v.Volume)
+	}
+}

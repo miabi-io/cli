@@ -213,6 +213,44 @@ miabi db databases connection shop app_prod   # reveal connection (admin)
 miabi db databases rm shop app_prod [--yes]
 ```
 
+### Volumes
+
+Persistent storage for applications. Volumes are addressed by **name** (or
+numeric id) and are **immutable**: capacity and driver options are fixed at
+creation, so there is no `set` — recreate the volume to change them.
+
+```
+miabi volumes ls                              # list volumes (alias: vol)
+miabi volumes create web-data --size-mb 5120 [--node <id>]
+miabi volumes get web-data                    # details + the apps mounting it
+miabi volumes attach web-data --app web --path /var/lib/data
+miabi volumes detach web-data --app web       # unmount; the data is kept
+miabi volumes rm web-data [--yes]             # destroys the data
+miabi volumes storage                         # workspace totals + plan limit
+```
+
+`SIZE` is the capacity you **declared**; `USED` is what the panel last
+**measured** on disk — `-` means it has never been measured, which is not the
+same as empty. `attach` and `detach` flag the app as needing a redeploy; the
+mount takes effect on the next `miabi apps deploy`.
+
+The default driver is `local`: a node-local (`rwo`) volume only one node can
+mount, so an app backed by one cannot be replicated. `nfs` and `cifs` create
+shared (`rwx`) storage every replica can mount, and `host` binds an
+operator-managed path (privileged workspaces only):
+
+```bash
+miabi volumes create shared --driver nfs \
+  --driver-opt device=:/export --driver-opt o=addr=10.0.0.5,rw
+
+# a CIFS password belongs in a file, not in your shell history:
+miabi volumes create shared --driver cifs --driver-opt device=//nas/share \
+  --driver-opt-file o=mount-opts.txt
+```
+
+Driver options are encrypted server-side and never read back. A volume declared
+as `kind: Volume` in a manifest is owned by `miabi apply` — change it there.
+
 ### Secrets
 
 The workspace **vault**: values encrypted at rest, write-only over the API, and

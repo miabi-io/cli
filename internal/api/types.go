@@ -324,6 +324,89 @@ type CreateLogicalDatabaseResult struct {
 	EnvInjected bool            `json:"env_injected"`
 }
 
+// === volumes (persistent storage) =========================================
+
+// Volume is a workspace-owned managed volume. Name is the unique handle the CLI
+// and API address it by; DisplayName is the free-text label the UI shows.
+//
+// SizeBytes is the *declared* capacity asked for at create time (0 = unbounded);
+// UsedBytes is the last *measured* on-disk usage, refreshed by the panel's
+// storage sweep. They are different numbers: a nil UsedMeasuredAt means the
+// volume has never been measured, not that it is empty.
+type Volume struct {
+	ID          uint   `json:"id"`
+	UID         string `json:"uid"`
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	// DockerName is the underlying Docker volume, which is not the handle.
+	DockerName string `json:"docker_name"`
+	// ServerID is the node the volume lives on (0 = the local control-plane node);
+	// ServerName is its display name, populated on read.
+	ServerID       uint       `json:"server_id"`
+	ServerName     string     `json:"server_name,omitempty"`
+	Mountpoint     string     `json:"mountpoint,omitempty"`
+	SizeBytes      int64      `json:"size_bytes"`
+	UsedBytes      int64      `json:"used_bytes"`
+	UsedMeasuredAt *time.Time `json:"used_measured_at,omitempty"`
+	// Driver is local (node-local) | nfs | cifs (shared) | host (an operator-managed
+	// bind). AccessMode follows from it: rwo for local, rwx for everything else.
+	Driver     string `json:"driver"`
+	AccessMode string `json:"access_mode"`
+	HostPath   string `json:"host_path,omitempty"`
+	// Imported marks a volume that adopted a pre-existing external Docker volume.
+	Imported  bool      `json:"imported"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// VolumeUsage is one application mounting a volume, with its mount path.
+type VolumeUsage struct {
+	AppID          uint   `json:"app_id"`
+	AppName        string `json:"app_name"`
+	AppDisplayName string `json:"app_display_name"`
+	Path           string `json:"path"`
+}
+
+// VolumeDetail is GET .../volumes/{id}: the stored volume plus live Docker state
+// (Exists) and the applications that mount it.
+type VolumeDetail struct {
+	// Inlined for -o yaml: encoding/json flattens an anonymous struct on its own,
+	// gopkg.in/yaml.v3 nests it under "volume" unless told otherwise.
+	Volume `yaml:",inline"`
+	Exists bool          `json:"exists"`
+	InUse  bool          `json:"in_use"`
+	UsedBy []VolumeUsage `json:"used_by"`
+}
+
+// CreateVolumeRequest is the body of POST .../volumes. A volume is immutable
+// once created — there is no update endpoint.
+type CreateVolumeRequest struct {
+	Name     string `json:"name"`
+	ServerID uint   `json:"server_id,omitempty"`
+	SizeMB   int    `json:"size_mb,omitempty"`
+	// Driver is local (default) | nfs | cifs | host. DriverOpts are the backend's
+	// mount options — NFS/CIFS need device (and usually o), host needs path. They
+	// are encrypted at rest and never returned.
+	Driver     string            `json:"driver,omitempty"`
+	DriverOpts map[string]string `json:"driver_opts,omitempty"`
+}
+
+// WorkspaceStorage is GET .../storage: the workspace's declared-vs-measured
+// storage totals. LimitMB is the plan's cap, -1 when unlimited.
+type WorkspaceStorage struct {
+	DeclaredBytes int64      `json:"declared_bytes"`
+	UsedBytes     int64      `json:"used_bytes"`
+	LimitMB       int        `json:"limit_mb"`
+	MeasuredAt    *time.Time `json:"measured_at,omitempty"`
+	VolumeCount   int64      `json:"volume_count"`
+}
+
+// AttachVolumeRequest is the body of POST .../apps/{id}/volumes.
+type AttachVolumeRequest struct {
+	VolumeID uint   `json:"volume_id"`
+	Path     string `json:"path"`
+}
+
 // === secrets (workspace Vault) ============================================
 
 // Secret is one entry of the workspace Vault. Values are write-only over the API

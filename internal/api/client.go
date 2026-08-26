@@ -584,6 +584,79 @@ func (c *Client) ResolveConfigID(ctx context.Context, ws, ref string) (uint, err
 	return cfg.ID, nil
 }
 
+// --- volumes (persistent storage) -------------------------------------------
+
+// Volumes lists a workspace's managed volumes. The endpoint is not paginated.
+func (c *Client) Volumes(ctx context.Context, ws string) ([]Volume, error) {
+	var vols []Volume
+	return vols, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes", ws), &vols)
+}
+
+// Volume returns one volume with its live Docker state and the apps mounting it.
+// The id must be numeric: unlike the file routes, this endpoint does not accept
+// a name or a UID — resolve with ResolveVolumeID first.
+func (c *Client) Volume(ctx context.Context, ws string, id uint) (*VolumeDetail, error) {
+	var v VolumeDetail
+	return &v, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d", ws, id), &v)
+}
+
+func (c *Client) CreateVolume(ctx context.Context, ws string, req CreateVolumeRequest) (*Volume, error) {
+	var v Volume
+	return &v, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes", ws), req, &v)
+}
+
+// DeleteVolume destroys a volume and its data. The server answers 409 while an
+// application still mounts it.
+func (c *Client) DeleteVolume(ctx context.Context, ws string, id uint) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d", ws, id), nil)
+}
+
+// WorkspaceStorage returns the workspace's declared-vs-measured storage totals.
+func (c *Client) WorkspaceStorage(ctx context.Context, ws string) (*WorkspaceStorage, error) {
+	var s WorkspaceStorage
+	return &s, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/storage", ws), &s)
+}
+
+// FindVolumeByName returns the named volume, or nil when none exists.
+func (c *Client) FindVolumeByName(ctx context.Context, ws, name string) (*Volume, error) {
+	vols, err := c.Volumes(ctx, ws)
+	if err != nil {
+		return nil, err
+	}
+	for i := range vols {
+		if vols[i].Name == name {
+			return &vols[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// ResolveVolumeID turns a volume name (or numeric id) into its numeric id.
+func (c *Client) ResolveVolumeID(ctx context.Context, ws, ref string) (uint, error) {
+	if id, err := strconv.ParseUint(ref, 10, 64); err == nil {
+		return uint(id), nil
+	}
+	v, err := c.FindVolumeByName(ctx, ws, ref)
+	if err != nil {
+		return 0, err
+	}
+	if v == nil {
+		return 0, fmt.Errorf("volume %q not found in this workspace", ref)
+	}
+	return v.ID, nil
+}
+
+// AttachVolume mounts a volume into an application at path. It flags the app as
+// needing a redeploy; it does not restart it.
+func (c *Client) AttachVolume(ctx context.Context, ws string, appID uint, req AttachVolumeRequest) error {
+	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/volumes", ws, appID), req, nil)
+}
+
+// DetachVolume unmounts a volume from an application (the data is kept).
+func (c *Client) DetachVolume(ctx context.Context, ws string, appID, volumeID uint) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/volumes/%d", ws, appID, volumeID), nil)
+}
+
 //  secrets (workspace Vault)
 
 // Secrets lists a workspace's secrets (names + metadata, never values). The list
