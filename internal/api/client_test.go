@@ -211,3 +211,114 @@ func TestVolumeDetailDecodes(t *testing.T) {
 		t.Errorf("volume = %+v, want the embedded fields decoded", v.Volume)
 	}
 }
+
+// A file download bypasses the JSON envelope, so its failure paths have to be
+// re-established: an error still answers the envelope, and a gateway's HTML must
+// never reach the caller as if it were the file's content.
+func TestDownloadVolumeFile(t *testing.T) {
+	t.Run("raw body", func(t *testing.T) {
+		var gotQuery string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotQuery = r.URL.Query().Get("path")
+			w.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = w.Write([]byte("\x00\x01binary\n"))
+		}))
+		defer srv.Close()
+
+		c, err := New(Options{BaseURL: srv.URL})
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := c.DownloadVolumeFile(context.Background(), "ws", 7, "conf/a b.conf")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != "\x00\x01binary\n" {
+			t.Errorf("data = %q, want the bytes verbatim", data)
+		}
+		if gotQuery != "conf/a b.conf" {
+			t.Errorf("path query = %q, want it escaped and decoded back", gotQuery)
+		}
+	})
+
+	t.Run("error envelope", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"success":false,"error":{"code":"NOT_FOUND","message":"file not found"}}`))
+		}))
+		defer srv.Close()
+
+		c, err := New(Options{BaseURL: srv.URL})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = c.DownloadVolumeFile(context.Background(), "ws", 7, "missing")
+		if err == nil || !strings.Contains(err.Error(), "file not found") {
+			t.Fatalf("error = %v, want the API's not-found message", err)
+		}
+	})
+
+	t.Run("html is not a file", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<html><title>Sign in</title></html>"))
+		}))
+		defer srv.Close()
+
+		c, err := New(Options{BaseURL: srv.URL})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = c.DownloadVolumeFile(context.Background(), "ws", 7, "app.conf")
+		if err == nil || !strings.Contains(err.Error(), "not the Miabi API") {
+			t.Fatalf("error = %v, want a 200 HTML page refused instead of returned", err)
+		}
+	})
+}
+
+// The upload is multipart: the panel takes the destination directory from the
+// "path" field and the file name from the part's filename.
+func TestUploadVolumeFileSendsMultipart(t *testing.T) {
+	var (
+		gotDir      string
+		gotName     string
+		gotContent  string
+		gotBoundary bool
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBoundary = strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data")
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Errorf("parse multipart: %v", err)
+		}
+		gotDir = r.FormValue("path")
+		f, hdr, err := r.FormFile("file")
+		if err != nil {
+			t.Errorf("form file: %v", err)
+		} else {
+			defer f.Close()
+			gotName = hdr.Filename
+			b := make([]byte, hdr.Size)
+			_, _ = f.Read(b)
+			gotContent = string(b)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"data":{"path":"conf/app.conf"}}`))
+	}))
+	defer srv.Close()
+
+	c, err := New(Options{BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest, err := c.UploadVolumeFile(context.Background(), "ws", 7, "conf", "app.conf", strings.NewReader("listen 80;\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dest != "conf/app.conf" {
+		t.Errorf("dest = %q, want the path the panel reported", dest)
+	}
+	if !gotBoundary || gotDir != "conf" || gotName != "app.conf" || gotContent != "listen 80;\n" {
+		t.Errorf("multipart = (%t, dir %q, name %q, content %q)", gotBoundary, gotDir, gotName, gotContent)
+	}
+}

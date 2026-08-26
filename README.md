@@ -251,6 +251,30 @@ miabi volumes create shared --driver cifs --driver-opt device=//nas/share \
 Driver options are encrypted server-side and never read back. A volume declared
 as `kind: Volume` in a manifest is owned by `miabi apply` — change it there.
 
+#### Volume contents
+
+Read and write a volume's files without a shell on the host. The panel does this
+with a short-lived helper container, so the first call on a node may pause while
+that image is pulled.
+
+```
+miabi volumes ls-files web-data [--path conf]     # recursive listing (alias: files)
+miabi volumes cp ./nginx.conf web-data:/conf/nginx.conf   # upload
+miabi volumes cp web-data:/conf/nginx.conf ./nginx.conf   # download
+miabi volumes cp web-data:/dump.sql - | gzip > dump.sql.gz
+miabi volumes rm-file web-data conf/nginx.conf [--yes]
+```
+
+Exactly one side of `cp` is qualified as `<volume>:<path>`; the other is a local
+path, or `-` for stdin/stdout. Paths inside a volume are relative to its root, so
+the leading slash is optional. Uploading **overwrites** the file in the volume;
+downloading refuses to overwrite an existing local file unless you pass
+`--force`. Files are buffered in memory on both ends and the panel caps a single
+upload at 512 MiB — `miabi db` is the right tool for a database dump, not this.
+
+`rm-file` on a directory removes everything under it; the prompt says how many
+entries that is.
+
 ### Secrets
 
 The workspace **vault**: values encrypted at rest, write-only over the API, and

@@ -10,7 +10,10 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -655,6 +658,88 @@ func (c *Client) AttachVolume(ctx context.Context, ws string, appID uint, req At
 // DetachVolume unmounts a volume from an application (the data is kept).
 func (c *Client) DetachVolume(ctx context.Context, ws string, appID, volumeID uint) error {
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/volumes/%d", ws, appID, volumeID), nil)
+}
+
+// --- volume files ------------------------------------------------------------
+
+// FileTransferTimeout bounds one volume file upload or download. The default
+// 30s client timeout covers control-plane calls; moving a multi-hundred-MB file
+// over a slow link is a different order of magnitude.
+const FileTransferTimeout = 30 * time.Minute
+
+// MaxVolumeUploadBytes mirrors the panel's per-file upload cap, so an oversized
+// file fails before it is read and sent rather than after.
+const MaxVolumeUploadBytes = 512 << 20
+
+// VolumeFiles lists a volume's contents recursively, relative to its root. The
+// panel caps the listing at 5000 entries.
+func (c *Client) VolumeFiles(ctx context.Context, ws string, id uint) ([]VolumeFile, error) {
+	var files []VolumeFile
+	return files, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files", ws, id), &files)
+}
+
+// UploadVolumeFile lands content in a volume as subdir/name (subdir may be
+// empty) and returns the path it was written to. It overwrites an existing file.
+func (c *Client) UploadVolumeFile(ctx context.Context, ws string, id uint, subdir, name string, content io.Reader) (string, error) {
+	var out VolumeUploadResult
+	rb := c.c.Post(fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files", ws, id)).
+		WithContext(ctx).
+		Timeout(FileTransferTimeout).
+		Multipart(func(w *multipart.Writer) error {
+			if subdir != "" {
+				if err := w.WriteField("path", subdir); err != nil {
+					return err
+				}
+			}
+			fw, err := w.CreateFormFile("file", name)
+			if err != nil {
+				return err
+			}
+			_, err = io.Copy(fw, content)
+			return err
+		})
+	if err := c.do(rb, &out); err != nil {
+		return "", err
+	}
+	return out.Path, nil
+}
+
+// DownloadVolumeFile returns one file's bytes. The response is the raw file, not
+// the JSON envelope every other call returns, so it bypasses the usual decoding.
+func (c *Client) DownloadVolumeFile(ctx context.Context, ws string, id uint, path string) ([]byte, error) {
+	return c.getRaw(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files/download?path=%s", ws, id, url.QueryEscape(path)))
+}
+
+// DeleteVolumeFile removes a file, or a directory and everything under it.
+func (c *Client) DeleteVolumeFile(ctx context.Context, ws string, id uint, path string) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files?path=%s", ws, id, url.QueryEscape(path)), nil)
+}
+
+// getRaw fetches a body the API serves verbatim (a file download) rather than
+// wrapped in the {success,data} envelope. A failure still answers the envelope,
+// so errors are decoded the usual way.
+func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
+	resp, err := c.c.Get(path).WithContext(ctx).Timeout(FileTransferTimeout).Do()
+	if err != nil {
+		return nil, err
+	}
+	if !resp.IsSuccess() {
+		var env envelope
+		if json.Unmarshal(resp.Body, &env) == nil && env.Error != nil {
+			return nil, env.Error
+		}
+		if len(bytes.TrimSpace(resp.Body)) == 0 {
+			return nil, fmt.Errorf("%s %s: HTTP %d", resp.Method, resp.URL, resp.StatusCode)
+		}
+		return nil, notAPIResponse(resp)
+	}
+	// The download handler always answers application/octet-stream. HTML here is
+	// a sign-in page or interstitial that would otherwise be written to disk as
+	// if it were the file.
+	if kind, _, _ := strings.Cut(resp.Header.Get("Content-Type"), ";"); strings.TrimSpace(kind) == "text/html" {
+		return nil, notAPIResponse(resp)
+	}
+	return resp.Body, nil
 }
 
 //  secrets (workspace Vault)

@@ -401,6 +401,21 @@ type WorkspaceStorage struct {
 	VolumeCount   int64      `json:"volume_count"`
 }
 
+// VolumeFile is one entry of a volume's recursive file listing. Path is relative
+// to the volume root; ModTime is unix seconds; directories report size 0.
+type VolumeFile struct {
+	Path    string `json:"path"`
+	Size    int64  `json:"size"`
+	ModTime int64  `json:"mod_time"`
+	IsDir   bool   `json:"is_dir"`
+}
+
+// VolumeUploadResult is the payload of POST .../volumes/{id}/files: the path the
+// file landed on, relative to the volume root.
+type VolumeUploadResult struct {
+	Path string `json:"path"`
+}
+
 // AttachVolumeRequest is the body of POST .../apps/{id}/volumes.
 type AttachVolumeRequest struct {
 	VolumeID uint   `json:"volume_id"`
