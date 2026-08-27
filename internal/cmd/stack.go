@@ -98,7 +98,6 @@ const releaseLookupTimeout = 20 * time.Second
 // stackcmd.SetupOptions, so the CLI resolves it here and passes an image.
 func imageForVersion(v string) string { return platformRepo + ":" + release.Normalize(v) }
 
-// ---------------------------------------------------------------------------
 // setup
 
 type setupOpts struct {
@@ -106,7 +105,7 @@ type setupOpts struct {
 	version                                      string
 	image, gatewayImage, runnerImage, gomaConfig string
 	registry, noHostProc, yes                    bool
-	registryHost, subnet, file                   string
+	registryHost, subnet, internalSubnet, file   string
 }
 
 // newSetupCmd builds the install/converge command. It is constructed rather than declared so the
@@ -139,7 +138,8 @@ func newSetupCmd(use string) *cobra.Command {
 	f.BoolVar(&o.registry, "registry", false, "enable the built-in container registry")
 	f.StringVar(&o.registryHost, "registry-host", "", "registry hostname (default registry.<domain>); implies --registry")
 	f.BoolVar(&o.noHostProc, "no-host-proc", false, "do not bind the host's /proc into the control plane (host metrics fall back to the container's /proc)")
-	f.StringVar(&o.subnet, "subnet", "", "CIDR for the shared `miabi` network (default "+stack.DefaultSubnet+")")
+	f.StringVar(&o.subnet, "subnet", "", "CIDR for the shared `miabi` network — apps and the gateway (default "+stack.DefaultSubnet+")")
+	f.StringVar(&o.internalSubnet, "internal-subnet", "", "CIDR for the private `"+stack.DefaultInternalNetwork+"` network — control plane, database, cache (default "+stack.DefaultInternalSubnet+")")
 	f.StringVarP(&o.file, "file", "f", "", "manifest path (default "+stack.DefaultConfigPath+")")
 	f.BoolVarP(&o.yes, "yes", "y", false, "skip the confirmation prompt")
 	return c
@@ -165,7 +165,7 @@ func runSetup(_ *cobra.Command, o *setupOpts) error {
 	res, err := stackcmd.Setup(ctx, sess.Svc, sess.Manifest, stackcmd.SetupOptions{
 		Domain: o.domain, AdminEmail: o.adminEmail, ACMEEmail: o.acmeEmail, ControlURL: o.controlURL,
 		Image: image, GatewayImage: o.gatewayImage, RunnerImage: o.runnerImage, GomaConfig: o.gomaConfig,
-		RegistryHost: o.registryHost, Subnet: o.subnet,
+		RegistryHost: o.registryHost, Subnet: o.subnet, InternalSubnet: o.internalSubnet,
 		Registry: o.registry, NoHostProc: o.noHostProc, Yes: o.yes,
 		DefaultImage: defaultControlPlaneImage,
 	}, cliUI{})
@@ -236,7 +236,6 @@ func runUpgrade(args []string, image, versionFlag, file string, yes bool) error 
 	}, cliUI{})
 }
 
-// ---------------------------------------------------------------------------
 // restart
 
 // newRestartCmd restarts containers WITHOUT recreating them, so they re-read what is on disk.
@@ -273,7 +272,6 @@ func newRestartCmd() *cobra.Command {
 	return c
 }
 
-// ---------------------------------------------------------------------------
 // status
 
 func newStatusCmd() *cobra.Command {
@@ -369,7 +367,6 @@ func newUninstallCmd() *cobra.Command {
 	return c
 }
 
-// ---------------------------------------------------------------------------
 // migrate-config
 
 func newMigrateConfigCmd() *cobra.Command {
