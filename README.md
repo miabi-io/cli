@@ -213,6 +213,94 @@ miabi db databases connection shop app_prod   # reveal connection (admin)
 miabi db databases rm shop app_prod [--yes]
 ```
 
+### Volumes
+
+Persistent storage for applications. Volumes are addressed by **name** (or
+numeric id) and are **immutable**: capacity and driver options are fixed at
+creation, so there is no `set` — recreate the volume to change them.
+
+```
+miabi volumes ls                              # list volumes (alias: vol)
+miabi volumes create web-data --size-mb 5120 [--node <id>]
+miabi volumes get web-data                    # details + the apps mounting it
+miabi volumes attach web-data --app web --path /var/lib/data
+miabi volumes detach web-data --app web       # unmount; the data is kept
+miabi volumes rm web-data [--yes]             # destroys the data
+miabi volumes storage                         # workspace totals + plan limit
+```
+
+`SIZE` is the capacity you **declared**; `USED` is what the panel last
+**measured** on disk — `-` means it has never been measured, which is not the
+same as empty. `attach` and `detach` flag the app as needing a redeploy; the
+mount takes effect on the next `miabi apps deploy`.
+
+The default driver is `local`: a node-local (`rwo`) volume only one node can
+mount, so an app backed by one cannot be replicated. `nfs` and `cifs` create
+shared (`rwx`) storage every replica can mount, and `host` binds an
+operator-managed path (privileged workspaces only):
+
+```bash
+miabi volumes create shared --driver nfs \
+  --driver-opt device=:/export --driver-opt o=addr=10.0.0.5,rw
+
+# a CIFS password belongs in a file, not in your shell history:
+miabi volumes create shared --driver cifs --driver-opt device=//nas/share \
+  --driver-opt-file o=mount-opts.txt
+```
+
+Driver options are encrypted server-side and never read back. A volume declared
+as `kind: Volume` in a manifest is owned by `miabi apply` — change it there.
+
+#### Volume contents
+
+Read and write a volume's files without a shell on the host. The panel does this
+with a short-lived helper container, so the first call on a node may pause while
+that image is pulled.
+
+```
+miabi volumes ls-files web-data [--path conf]     # recursive listing (alias: files)
+miabi volumes cp ./nginx.conf web-data:/conf/nginx.conf   # upload
+miabi volumes cp web-data:/conf/nginx.conf ./nginx.conf   # download
+miabi volumes cp web-data:/dump.sql - | gzip > dump.sql.gz
+miabi volumes rm-file web-data conf/nginx.conf [--yes]
+```
+
+Exactly one side of `cp` is qualified as `<volume>:<path>`; the other is a local
+path, or `-` for stdin/stdout. Paths inside a volume are relative to its root, so
+the leading slash is optional. Uploading **overwrites** the file in the volume;
+downloading refuses to overwrite an existing local file unless you pass
+`--force`. Files are buffered in memory on both ends and the panel caps a single
+upload at 512 MiB — `miabi db` is the right tool for a database dump, not this.
+
+`rm-file` on a directory removes everything under it; the prompt says how many
+entries that is.
+
+#### Volume backups (S3)
+
+Archive a volume's contents to the workspace's S3 target and restore them.
+Configure S3 in the panel's backup settings first — without it every call here
+is refused. Backups are addressed by the numeric `ID` the listing shows.
+
+```
+miabi volumes backups web-data                     # history
+miabi volumes backups run web-data [--wait] [--timeout 1h]
+miabi volumes backups logs web-data 42             # a run's full log
+miabi volumes backups restore web-data 42 [--yes]  # overwrites the volume
+miabi volumes backups rm web-data 42 [--yes]       # forgets the run; keeps the object
+```
+
+`run` hands the work to the panel's worker and returns while the run is still
+pending. `--wait` blocks until it settles and **exits non-zero if it fails**, so
+a CI step can depend on it.
+
+`restore` overwrites the volume's current contents and does **not** stop the apps
+mounting it — stop them yourself unless the workload tolerates its filesystem
+changing underneath. The panel restores inline, so the command blocks until the
+restore finishes.
+
+`rm` deletes the record, not the archive: the panel has no S3 delete, so reclaim
+bucket storage with a lifecycle rule.
+
 ### Secrets
 
 The workspace **vault**: values encrypted at rest, write-only over the API, and

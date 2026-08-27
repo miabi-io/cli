@@ -10,7 +10,10 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -176,6 +179,16 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 
 func (c *Client) post(ctx context.Context, path string, body, out any) error {
 	rb := c.c.Post(path).WithContext(ctx)
+	if body != nil {
+		rb = rb.JSONBody(body)
+	}
+	return c.do(rb, out)
+}
+
+// postLong is post with a longer deadline, for endpoints that do their work
+// inline instead of handing it to the worker.
+func (c *Client) postLong(ctx context.Context, path string, body, out any, timeout time.Duration) error {
+	rb := c.c.Post(path).WithContext(ctx).Timeout(timeout)
 	if body != nil {
 		rb = rb.JSONBody(body)
 	}
@@ -582,6 +595,252 @@ func (c *Client) ResolveConfigID(ctx context.Context, ws, ref string) (uint, err
 		return 0, fmt.Errorf("config %q not found", ref)
 	}
 	return cfg.ID, nil
+}
+
+// --- volumes (persistent storage) -------------------------------------------
+
+// Volumes lists a workspace's managed volumes. The endpoint is not paginated.
+func (c *Client) Volumes(ctx context.Context, ws string) ([]Volume, error) {
+	var vols []Volume
+	return vols, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes", ws), &vols)
+}
+
+// Volume returns one volume with its live Docker state and the apps mounting it.
+// The id must be numeric: unlike the file routes, this endpoint does not accept
+// a name or a UID — resolve with ResolveVolumeID first.
+func (c *Client) Volume(ctx context.Context, ws string, id uint) (*VolumeDetail, error) {
+	var v VolumeDetail
+	return &v, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d", ws, id), &v)
+}
+
+func (c *Client) CreateVolume(ctx context.Context, ws string, req CreateVolumeRequest) (*Volume, error) {
+	var v Volume
+	return &v, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes", ws), req, &v)
+}
+
+// DeleteVolume destroys a volume and its data. The server answers 409 while an
+// application still mounts it.
+func (c *Client) DeleteVolume(ctx context.Context, ws string, id uint) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d", ws, id), nil)
+}
+
+// WorkspaceStorage returns the workspace's declared-vs-measured storage totals.
+func (c *Client) WorkspaceStorage(ctx context.Context, ws string) (*WorkspaceStorage, error) {
+	var s WorkspaceStorage
+	return &s, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/storage", ws), &s)
+}
+
+// FindVolumeByName returns the named volume, or nil when none exists.
+func (c *Client) FindVolumeByName(ctx context.Context, ws, name string) (*Volume, error) {
+	vols, err := c.Volumes(ctx, ws)
+	if err != nil {
+		return nil, err
+	}
+	for i := range vols {
+		if vols[i].Name == name {
+			return &vols[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// ResolveVolumeID turns a volume name (or numeric id) into its numeric id.
+func (c *Client) ResolveVolumeID(ctx context.Context, ws, ref string) (uint, error) {
+	if id, err := strconv.ParseUint(ref, 10, 64); err == nil {
+		return uint(id), nil
+	}
+	v, err := c.FindVolumeByName(ctx, ws, ref)
+	if err != nil {
+		return 0, err
+	}
+	if v == nil {
+		return 0, fmt.Errorf("volume %q not found in this workspace", ref)
+	}
+	return v.ID, nil
+}
+
+// AttachVolume mounts a volume into an application at path. It flags the app as
+// needing a redeploy; it does not restart it.
+func (c *Client) AttachVolume(ctx context.Context, ws string, appID uint, req AttachVolumeRequest) error {
+	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/volumes", ws, appID), req, nil)
+}
+
+// DetachVolume unmounts a volume from an application (the data is kept).
+func (c *Client) DetachVolume(ctx context.Context, ws string, appID, volumeID uint) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/volumes/%d", ws, appID, volumeID), nil)
+}
+
+// --- volume files ------------------------------------------------------------
+
+// FileTransferTimeout bounds one volume file upload or download. The default
+// 30s client timeout covers control-plane calls; moving a multi-hundred-MB file
+// over a slow link is a different order of magnitude.
+const FileTransferTimeout = 30 * time.Minute
+
+// MaxVolumeUploadBytes mirrors the panel's per-file upload cap, so an oversized
+// file fails before it is read and sent rather than after.
+const MaxVolumeUploadBytes = 512 << 20
+
+// VolumeFiles lists a volume's contents recursively, relative to its root. The
+// panel caps the listing at 5000 entries.
+func (c *Client) VolumeFiles(ctx context.Context, ws string, id uint) ([]VolumeFile, error) {
+	var files []VolumeFile
+	return files, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files", ws, id), &files)
+}
+
+// UploadVolumeFile lands content in a volume as subdir/name (subdir may be
+// empty) and returns the path it was written to. It overwrites an existing file.
+func (c *Client) UploadVolumeFile(ctx context.Context, ws string, id uint, subdir, name string, content io.Reader) (string, error) {
+	var out VolumeUploadResult
+	rb := c.c.Post(fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files", ws, id)).
+		WithContext(ctx).
+		Timeout(FileTransferTimeout).
+		Multipart(func(w *multipart.Writer) error {
+			if subdir != "" {
+				if err := w.WriteField("path", subdir); err != nil {
+					return err
+				}
+			}
+			fw, err := w.CreateFormFile("file", name)
+			if err != nil {
+				return err
+			}
+			_, err = io.Copy(fw, content)
+			return err
+		})
+	if err := c.do(rb, &out); err != nil {
+		return "", err
+	}
+	return out.Path, nil
+}
+
+// DownloadVolumeFile returns one file's bytes. The response is the raw file, not
+// the JSON envelope every other call returns, so it bypasses the usual decoding.
+func (c *Client) DownloadVolumeFile(ctx context.Context, ws string, id uint, path string) ([]byte, error) {
+	return c.getRaw(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files/download?path=%s", ws, id, url.QueryEscape(path)))
+}
+
+// DeleteVolumeFile removes a file, or a directory and everything under it.
+func (c *Client) DeleteVolumeFile(ctx context.Context, ws string, id uint, path string) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files?path=%s", ws, id, url.QueryEscape(path)), nil)
+}
+
+// getRaw fetches a body the API serves verbatim (a file download) rather than
+// wrapped in the {success,data} envelope. A failure still answers the envelope,
+// so errors are decoded the usual way.
+func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
+	resp, err := c.c.Get(path).WithContext(ctx).Timeout(FileTransferTimeout).Do()
+	if err != nil {
+		return nil, err
+	}
+	if !resp.IsSuccess() {
+		var env envelope
+		if json.Unmarshal(resp.Body, &env) == nil && env.Error != nil {
+			return nil, env.Error
+		}
+		if len(bytes.TrimSpace(resp.Body)) == 0 {
+			return nil, fmt.Errorf("%s %s: HTTP %d", resp.Method, resp.URL, resp.StatusCode)
+		}
+		return nil, notAPIResponse(resp)
+	}
+	// The download handler always answers application/octet-stream. HTML here is
+	// a sign-in page or interstitial that would otherwise be written to disk as
+	// if it were the file.
+	if kind, _, _ := strings.Cut(resp.Header.Get("Content-Type"), ";"); strings.TrimSpace(kind) == "text/html" {
+		return nil, notAPIResponse(resp)
+	}
+	return resp.Body, nil
+}
+
+// --- volume backups (S3) -----------------------------------------------------
+
+// RestoreTimeout bounds a restore. The panel runs the restore inline in the
+// request — it pulls an image and unpacks an archive before answering — so the
+// 30s control-plane deadline would abort a restore that is going fine.
+const RestoreTimeout = 60 * time.Minute
+
+// VolumeBackups lists a volume's backup history, newest first as the panel
+// returns it.
+func (c *Client) VolumeBackups(ctx context.Context, ws string, id uint) ([]VolumeBackup, error) {
+	var bs []VolumeBackup
+	return bs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups", ws, id), &bs)
+}
+
+// VolumeBackupConfigured reports whether the workspace has an S3 target, which
+// volume backups require.
+func (c *Client) VolumeBackupConfigured(ctx context.Context, ws string, id uint) (bool, error) {
+	var st VolumeBackupStatus
+	err := c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/status", ws, id), &st)
+	return st.S3Configured, err
+}
+
+// RunVolumeBackup enqueues a backup and returns the pending record. The work
+// happens in the panel's worker, so the record is not finished when this returns.
+func (c *Client) RunVolumeBackup(ctx context.Context, ws string, id uint) (*VolumeBackup, error) {
+	var b VolumeBackup
+	return &b, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups", ws, id), nil, &b)
+}
+
+// RestoreVolumeBackup overwrites a volume's contents from one of its backups.
+// The call blocks for the whole restore.
+func (c *Client) RestoreVolumeBackup(ctx context.Context, ws string, id, backupID uint) error {
+	return c.postLong(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d/restore", ws, id, backupID), nil, nil, RestoreTimeout)
+}
+
+func (c *Client) DeleteVolumeBackup(ctx context.Context, ws string, id, backupID uint) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d", ws, id, backupID), nil)
+}
+
+// VolumeBackupLogs downloads a run's full log, which the panel serves as a file
+// rather than in the envelope.
+func (c *Client) VolumeBackupLogs(ctx context.Context, ws string, id, backupID uint) ([]byte, error) {
+	return c.getRaw(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d/logs/download", ws, id, backupID))
+}
+
+// FindVolumeBackup returns one backup from the volume's history. There is no
+// single-backup endpoint, so this filters the list.
+func (c *Client) FindVolumeBackup(ctx context.Context, ws string, id, backupID uint) (*VolumeBackup, error) {
+	bs, err := c.VolumeBackups(ctx, ws, id)
+	if err != nil {
+		return nil, err
+	}
+	for i := range bs {
+		if bs[i].ID == backupID {
+			return &bs[i], nil
+		}
+	}
+	return nil, fmt.Errorf("backup %d not found for this volume", backupID)
+}
+
+// volumeBackupPollInterval is how often --wait re-reads the history. A variable
+// so the tests do not have to sleep through real backoff.
+var volumeBackupPollInterval = 3 * time.Second
+
+// WaitForVolumeBackup polls until the run settles, reporting each status change.
+func (c *Client) WaitForVolumeBackup(ctx context.Context, ws string, id, backupID uint, onUpdate func(status string)) (*VolumeBackup, error) {
+	ticker := time.NewTicker(volumeBackupPollInterval)
+	defer ticker.Stop()
+	last := ""
+	for {
+		b, err := c.FindVolumeBackup(ctx, ws, id, backupID)
+		if err != nil {
+			return nil, err
+		}
+		if b.Status != last {
+			last = b.Status
+			if onUpdate != nil {
+				onUpdate(b.Status)
+			}
+		}
+		if IsBackupTerminal(b.Status) {
+			return b, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 //  secrets (workspace Vault)
