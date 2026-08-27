@@ -347,6 +347,28 @@ func (e *Engine) EnsureNetworkSpec(ctx context.Context, spec docker.NetworkSpec)
 	return created.ID, nil
 }
 
+func (e *Engine) NetworkConnect(ctx context.Context, name, containerID string, aliases []string) error {
+	_, err := e.cli.NetworkConnect(ctx, name, client.NetworkConnectOptions{
+		Container:      containerID,
+		EndpointConfig: &network.EndpointSettings{Aliases: aliases},
+	})
+	if err != nil && strings.Contains(strings.ToLower(err.Error()), "already exists") {
+		return nil
+	}
+	return err
+}
+
+func (e *Engine) NetworkDisconnect(ctx context.Context, name, containerID string, force bool) error {
+	_, err := e.cli.NetworkDisconnect(ctx, name, client.NetworkDisconnectOptions{
+		Container: containerID,
+		Force:     force,
+	})
+	if err != nil && cerrdefs.IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
 func (e *Engine) CreateVolume(ctx context.Context, name string, labels map[string]string, sizeBytes int64) (docker.Volume, error) {
 	labels = managedLabels(labels)
 	// Record the declared capacity as a label. A *hard* size cap needs a sized backing volume, which
