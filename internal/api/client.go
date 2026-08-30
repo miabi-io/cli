@@ -28,13 +28,7 @@ var Version = "dev"
 
 // Client talks to one panel with one token.
 type Client struct {
-	c *client.Client
-	// stream is used only for responses the client must not buffer — a volume file
-	// download. It shares the wrapper's transport (and therefore its TLS trust and
-	// redirect policy) but carries no deadline of its own: the caller's context
-	// bounds the transfer, because a 30s client timeout would kill a large one
-	// mid-copy. It also does not retry, which a stream cannot do safely once bytes
-	// have reached the destination.
+	c       *client.Client
 	stream  *http.Client
 	baseURL string
 	token   string
