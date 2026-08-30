@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,5 +105,24 @@ func TestVolumeNodeAndDriverFallBack(t *testing.T) {
 	// An older panel does not send the driver column.
 	if got := volumeDriver(api.Volume{}); got != "local" {
 		t.Errorf("driver = %q, want local", got)
+	}
+}
+
+// A workspace plan uses -1 for unlimited and 0 for none, and 0 is the column's
+// default — so the plan that grants no storage is the easy one to create. Sending
+// it through volumeSize said "unlimited", which is the opposite of the truth.
+func TestStorageLimitDoesNotReadNoneAsUnlimited(t *testing.T) {
+	if got := storageLimit(-1); got != "unlimited" {
+		t.Errorf("storageLimit(-1) = %q, want unlimited", got)
+	}
+	got := storageLimit(0)
+	if strings.Contains(got, "unlimited") {
+		t.Errorf("storageLimit(0) = %q — 0 means no storage at all, not unlimited", got)
+	}
+	if !strings.HasPrefix(got, "none") {
+		t.Errorf("storageLimit(0) = %q, want it to lead with none", got)
+	}
+	if got := storageLimit(1024); got != "1.0GB" {
+		t.Errorf("storageLimit(1024) = %q", got)
 	}
 }

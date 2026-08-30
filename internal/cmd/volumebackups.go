@@ -126,7 +126,10 @@ var volBackupRunCmd = &cobra.Command{
 			if final.Error != "" {
 				ui.Fail("Backup #%d failed: %s", final.ID, final.Error)
 			}
-			ui.Info("Full log: miabi volumes backups logs %s %d", args[0], final.ID)
+			// ui.Info writes to stdout, where emit has just written the JSON document.
+			if !structured() {
+				ui.Info("Full log: miabi volumes backups logs %s %d", args[0], final.ID)
+			}
 			// Non-zero exit so CI fails the step.
 			return fmt.Errorf("backup #%d failed", final.ID)
 		}

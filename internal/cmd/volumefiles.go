@@ -50,11 +50,14 @@ var volLsFilesCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		files, err := c.VolumeFiles(ctx, ws, id)
+		all, err := c.VolumeFiles(ctx, ws, id)
 		if err != nil {
 			return err
 		}
-		files = filterFiles(files, volFilePath)
+		// Truncation is a property of what the panel sent, not of what --path keeps:
+		// measuring it after the filter hides it for every filtered listing.
+		truncated := len(all) >= api.MaxListedVolumeFiles
+		files := filterFiles(all, volFilePath)
 		sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 		if structured() {
 			return emit(files)
@@ -65,6 +68,9 @@ var volLsFilesCmd = &cobra.Command{
 			} else {
 				ui.Info("Volume %s is empty.", args[0])
 			}
+			if truncated {
+				ui.Warn("The listing hit the panel's %d-entry cap — entries under that path may exist beyond it.", api.MaxListedVolumeFiles)
+			}
 			return nil
 		}
 		t := ui.NewTable("PATH", "SIZE", "MODIFIED")
@@ -72,10 +78,8 @@ var volLsFilesCmd = &cobra.Command{
 			t.Row(filePathCell(f), fileSizeCell(f), fileAgeCell(f))
 		}
 		t.Print()
-		// The cap is applied server-side and not reported in the payload, so a
-		// listing sitting exactly on it is almost certainly truncated.
-		if len(files) >= 5000 {
-			ui.Warn("The listing hit the panel's 5000-entry cap — some files are not shown.")
+		if truncated {
+			ui.Warn("The listing hit the panel's %d-entry cap — some files are not shown.", api.MaxListedVolumeFiles)
 		}
 		return nil
 	},
@@ -89,8 +93,10 @@ var volCpCmd = &cobra.Command{
 		"downloading). Paths inside a volume are relative to its root, so a leading\n" +
 		"slash is optional.\n\n" +
 		"Uploading overwrites the file in the volume; downloading refuses to clobber an\n" +
-		"existing local file unless --force. The file is buffered in memory on both\n" +
-		"ends, and the panel rejects uploads over 512 MiB.",
+		"existing local file unless --force. Both directions stream, so file size is\n" +
+		"bounded by disk rather than memory; only an upload from stdin is buffered,\n" +
+		"since its size is not knowable in advance. The panel rejects uploads over\n" +
+		"512 MiB.",
 	Example: "  miabi volumes cp ./nginx.conf web-data:/conf/nginx.conf\n" +
 		"  miabi volumes cp web-data:/conf/nginx.conf ./nginx.conf\n" +
 		"  miabi volumes cp web-data:/dump.sql - | gzip > dump.sql.gz",
@@ -136,7 +142,7 @@ var volRmFileCmd = &cobra.Command{
 			// A directory takes everything under it, so say how much that is.
 			if files, ferr := c.VolumeFiles(ctx, ws, id); ferr == nil {
 				if n := countUnder(files, target); n > 0 {
-					prompt = fmt.Sprintf("Delete %s from volume %s, and the %d entrie(s) under it? This cannot be undone.",
+					prompt = fmt.Sprintf("Delete %s from volume %s, and the %d entries under it? This cannot be undone.",
 						ui.Bold(target), args[0], n)
 				}
 			}
@@ -177,24 +183,34 @@ func downloadFromVolume(ctx context.Context, volRef, remotePath, dst string) err
 		}
 	}
 
-	// Off a TTY the spinner is a no-op, and piping to stdout must stay pristine.
 	sp := ui.NewSpinner(fmt.Sprintf("Downloading %s from %s", remotePath, volRef))
-	if local != "-" {
-		sp.Start()
+	if local == "-" {
+		_, err := c.DownloadVolumeFile(ctx, ws, id, remotePath, os.Stdout)
+		return err
 	}
-	data, err := c.DownloadVolumeFile(ctx, ws, id, remotePath)
+
+	tmp, err := os.CreateTemp(filepath.Dir(local), ".miabi-download-*")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+	}()
+
+	sp.Start()
+	n, err := c.DownloadVolumeFile(ctx, ws, id, remotePath, tmp)
 	sp.Stop()
 	if err != nil {
 		return err
 	}
-	if local == "-" {
-		_, err = os.Stdout.Write(data)
+	if err := tmp.Close(); err != nil {
 		return err
 	}
-	if err := os.WriteFile(local, data, 0o600); err != nil {
+	if err := os.Rename(tmp.Name(), local); err != nil {
 		return err
 	}
-	ui.Success("Wrote %s %s", ui.Bold(local), ui.Dim("("+humanBytes(int64(len(data)))+")"))
+	ui.Success("Wrote %s %s", ui.Bold(local), ui.Dim("("+humanBytes(n)+")"))
 	return nil
 }
 
@@ -205,25 +221,35 @@ func uploadToVolume(ctx context.Context, src, volRef, remotePath string) error {
 	if remotePath == "" || strings.HasSuffix(remotePath, "/") {
 		return fmt.Errorf("the destination must name a file, e.g. %s:/conf/app.conf", volRef)
 	}
+
 	var (
-		data []byte
-		err  error
+		body io.Reader
+		size int64
 	)
 	if src == "-" {
-		data, err = readAllStdin()
+		data, err := readAllStdin()
+		if err != nil {
+			return err
+		}
+		body, size = bytes.NewReader(data), int64(len(data))
 	} else {
-		var info os.FileInfo
-		if info, err = os.Stat(src); err == nil && info.IsDir() {
+		info, err := os.Stat(src)
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
 			return fmt.Errorf("%s is a directory — copy one file at a time", src)
 		}
-		data, err = os.ReadFile(src)
+		f, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = f.Close() }()
+		body, size = f, info.Size()
 	}
-	if err != nil {
-		return err
-	}
-	if int64(len(data)) > api.MaxVolumeUploadBytes {
+	if size > api.MaxVolumeUploadBytes {
 		return fmt.Errorf("%s is %s — the panel rejects uploads over %s",
-			src, humanBytes(int64(len(data))), humanBytes(api.MaxVolumeUploadBytes))
+			src, humanBytes(size), humanBytes(api.MaxVolumeUploadBytes))
 	}
 	c, ws, id, err := volumeConn(ctx, volRef)
 	if err != nil {
@@ -232,7 +258,7 @@ func uploadToVolume(ctx context.Context, src, volRef, remotePath string) error {
 	subdir, name := path.Split(remotePath)
 	sp := ui.NewSpinner(fmt.Sprintf("Uploading %s to %s", name, volRef))
 	sp.Start()
-	dest, err := c.UploadVolumeFile(ctx, ws, id, strings.TrimSuffix(subdir, "/"), name, bytes.NewReader(data))
+	dest, err := c.UploadVolumeFile(ctx, ws, id, strings.TrimSuffix(subdir, "/"), name, body)
 	sp.Stop()
 	if err != nil {
 		return err
@@ -241,7 +267,7 @@ func uploadToVolume(ctx context.Context, src, volRef, remotePath string) error {
 	if label == "-" {
 		label = "stdin"
 	}
-	ui.Success("Uploaded %s to %s:%s %s", ui.Bold(label), volRef, dest, ui.Dim("("+humanBytes(int64(len(data)))+")"))
+	ui.Success("Uploaded %s to %s:%s %s", ui.Bold(label), volRef, dest, ui.Dim("("+humanBytes(size)+")"))
 	return nil
 }
 

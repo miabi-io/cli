@@ -282,11 +282,7 @@ var volStorageCmd = &cobra.Command{
 			}
 			ui.Detail("Measured: %s %s", volumeSize(s.UsedBytes), ui.Dim("(measured "+age+")"))
 		}
-		if s.LimitMB < 0 {
-			ui.Detail("Limit:    unlimited")
-		} else {
-			ui.Detail("Limit:    %s", volumeSize(int64(s.LimitMB)*1024*1024))
-		}
+		ui.Detail("Limit:    %s", storageLimit(s.LimitMB))
 		return nil
 	},
 }
@@ -385,6 +381,17 @@ func collectDriverOpts() (map[string]string, error) {
 		return nil, nil
 	}
 	return opts, nil
+}
+
+func storageLimit(limitMB int) string {
+	switch {
+	case limitMB < 0:
+		return "unlimited"
+	case limitMB == 0:
+		return "none " + ui.Dim("(this workspace's plan grants no storage)")
+	default:
+		return volumeSize(int64(limitMB) * 1024 * 1024)
+	}
 }
 
 // volumeSize renders a declared capacity: 0 means "no ceiling was declared",
