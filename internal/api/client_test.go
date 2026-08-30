@@ -1,7 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -230,12 +233,16 @@ func TestDownloadVolumeFile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		data, err := c.DownloadVolumeFile(context.Background(), "ws", 7, "conf/a b.conf")
+		var buf bytes.Buffer
+		n, err := c.DownloadVolumeFile(context.Background(), "ws", 7, "conf/a b.conf", &buf)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if string(data) != "\x00\x01binary\n" {
-			t.Errorf("data = %q, want the bytes verbatim", data)
+		if buf.String() != "\x00\x01binary\n" {
+			t.Errorf("data = %q, want the bytes verbatim", buf.String())
+		}
+		if n != int64(buf.Len()) {
+			t.Errorf("n = %d, want %d", n, buf.Len())
 		}
 		if gotQuery != "conf/a b.conf" {
 			t.Errorf("path query = %q, want it escaped and decoded back", gotQuery)
@@ -254,7 +261,7 @@ func TestDownloadVolumeFile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = c.DownloadVolumeFile(context.Background(), "ws", 7, "missing")
+		_, err = c.DownloadVolumeFile(context.Background(), "ws", 7, "missing", io.Discard)
 		if err == nil || !strings.Contains(err.Error(), "file not found") {
 			t.Fatalf("error = %v, want the API's not-found message", err)
 		}
@@ -271,7 +278,7 @@ func TestDownloadVolumeFile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = c.DownloadVolumeFile(context.Background(), "ws", 7, "app.conf")
+		_, err = c.DownloadVolumeFile(context.Background(), "ws", 7, "app.conf", io.Discard)
 		if err == nil || !strings.Contains(err.Error(), "not the Miabi API") {
 			t.Fatalf("error = %v, want a 200 HTML page refused instead of returned", err)
 		}
@@ -376,5 +383,87 @@ func TestFindVolumeBackupMissing(t *testing.T) {
 	if _, err := c.FindVolumeBackup(context.Background(), "ws", 7, 99); err == nil ||
 		!strings.Contains(err.Error(), "backup 99 not found") {
 		t.Fatalf("error = %v, want a not-found naming the id", err)
+	}
+}
+
+// The point of streaming is that a large body never becomes a []byte. A response
+// bigger than any reasonable buffer must still arrive intact, and the client must
+// not have grown a copy of it along the way.
+func TestDownloadVolumeFileStreams(t *testing.T) {
+	const size = 8 << 20
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		chunk := bytes.Repeat([]byte("x"), 64<<10)
+		for sent := 0; sent < size; sent += len(chunk) {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+
+	c, err := New(Options{BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := sha256.New()
+	n, err := c.DownloadVolumeFile(context.Background(), "ws", 7, "big.bin", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != size {
+		t.Fatalf("copied %d bytes, want %d", n, size)
+	}
+	want := sha256.Sum256(bytes.Repeat([]byte("x"), size))
+	if !bytes.Equal(h.Sum(nil), want[:]) {
+		t.Error("the streamed bytes do not match what the server sent")
+	}
+}
+
+// A download's deadline has to outlive the call that starts it, or the copy dies
+// on the first read. Closing the body is what releases it.
+func TestStreamedDownloadOutlivesTheCallThatOpenedIt(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.(http.Flusher).Flush()
+		time.Sleep(150 * time.Millisecond)
+		_, _ = w.Write([]byte("late"))
+	}))
+	defer srv.Close()
+
+	c, err := New(Options{BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if _, err := c.DownloadVolumeFile(context.Background(), "ws", 7, "slow.bin", &buf); err != nil {
+		t.Fatal(err)
+	}
+	if buf.String() != "late" {
+		t.Errorf("body = %q, want the bytes that arrived after the headers", buf.String())
+	}
+}
+
+// An error answered as the envelope must still be reported as the API's message,
+// even though the success path never reads the body.
+func TestStreamedDownloadStillDecodesAPIErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"success":false,"error":{"code":"FORBIDDEN","message":"not your volume"}}`))
+	}))
+	defer srv.Close()
+
+	c, err := New(Options{BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	_, err = c.DownloadVolumeFile(context.Background(), "ws", 7, "x", &buf)
+	if err == nil || !strings.Contains(err.Error(), "not your volume") {
+		t.Fatalf("error = %v, want the API message", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("a failed download wrote %d bytes to the destination", buf.Len())
 	}
 }

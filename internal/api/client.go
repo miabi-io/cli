@@ -28,7 +28,16 @@ var Version = "dev"
 
 // Client talks to one panel with one token.
 type Client struct {
-	c       *client.Client
+	c *client.Client
+	// stream is used only for responses the client must not buffer — a volume file
+	// download. It shares the wrapper's transport (and therefore its TLS trust and
+	// redirect policy) but carries no deadline of its own: the caller's context
+	// bounds the transfer, because a 30s client timeout would kill a large one
+	// mid-copy. It also does not retry, which a stream cannot do safely once bytes
+	// have reached the destination.
+	stream  *http.Client
+	baseURL string
+	token   string
 	verbose bool
 }
 
@@ -58,11 +67,13 @@ func New(o Options) (*Client, error) {
 		}
 		tlsCfg.RootCAs = pool
 	}
+	tr := &http.Transport{TLSClientConfig: tlsCfg}
 	httpc := &http.Client{
 		Timeout:       30 * time.Second,
-		Transport:     &http.Transport{TLSClientConfig: tlsCfg},
+		Transport:     tr,
 		CheckRedirect: checkAPIRedirect,
 	}
+	streamc := &http.Client{Transport: tr, CheckRedirect: checkAPIRedirect}
 	opts := []client.Option{
 		client.WithHTTPClient(httpc),
 		client.WithBearerToken(o.Token),
@@ -76,7 +87,13 @@ func New(o Options) (*Client, error) {
 	if o.Verbose {
 		opts = append(opts, client.WithMiddleware(client.LoggingMiddleware(os.Stderr)))
 	}
-	return &Client{c: client.New(o.BaseURL, opts...), verbose: o.Verbose}, nil
+	return &Client{
+		c:       client.New(o.BaseURL, opts...),
+		stream:  streamc,
+		baseURL: strings.TrimRight(o.BaseURL, "/"),
+		token:   o.Token,
+		verbose: o.Verbose,
+	}, nil
 }
 
 func checkAPIRedirect(req *http.Request, via []*http.Request) error {
@@ -681,6 +698,11 @@ const FileTransferTimeout = 30 * time.Minute
 // file fails before it is read and sent rather than after.
 const MaxVolumeUploadBytes = 512 << 20
 
+// MaxListedVolumeFiles mirrors the panel's listing cap. It is not reported in the
+// payload, so a listing sitting exactly on it is the only signal that entries were
+// dropped.
+const MaxListedVolumeFiles = 5000
+
 // VolumeFiles lists a volume's contents recursively, relative to its root. The
 // panel caps the listing at 5000 entries.
 func (c *Client) VolumeFiles(ctx context.Context, ws string, id uint) ([]VolumeFile, error) {
@@ -714,10 +736,17 @@ func (c *Client) UploadVolumeFile(ctx context.Context, ws string, id uint, subdi
 	return out.Path, nil
 }
 
-// DownloadVolumeFile returns one file's bytes. The response is the raw file, not
-// the JSON envelope every other call returns, so it bypasses the usual decoding.
-func (c *Client) DownloadVolumeFile(ctx context.Context, ws string, id uint, path string) ([]byte, error) {
-	return c.getRaw(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files/download?path=%s", ws, id, url.QueryEscape(path)))
+// DownloadVolumeFile copies one file out of a volume into dst and returns the
+// number of bytes written. It streams: a volume file can be as large as the
+// panel's 512 MiB cap, and holding that in memory to hand it straight to a file
+// on disk is the kind of thing that gets a CLI OOM-killed on a small box.
+func (c *Client) DownloadVolumeFile(ctx context.Context, ws string, id uint, path string, dst io.Writer) (int64, error) {
+	body, err := c.streamRaw(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files/download?path=%s", ws, id, url.QueryEscape(path)))
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = body.Close() }()
+	return io.Copy(dst, body)
 }
 
 // DeleteVolumeFile removes a file, or a directory and everything under it.
@@ -725,9 +754,89 @@ func (c *Client) DeleteVolumeFile(ctx context.Context, ws string, id uint, path 
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files?path=%s", ws, id, url.QueryEscape(path)), nil)
 }
 
-// getRaw fetches a body the API serves verbatim (a file download) rather than
-// wrapped in the {success,data} envelope. A failure still answers the envelope,
-// so errors are decoded the usual way.
+// errorBodyLimit caps how much of a failed or unexpected response is read to
+// build the error message. It is a title or an API error, not a file.
+const errorBodyLimit = 64 << 10
+
+// streamRaw issues a GET and hands back the response body still open, so the
+// caller decides where the bytes go. It reproduces getRaw's checks — the API's
+// error envelope, and an HTML page answered with 200 — before handing over,
+// because both have to be recognised while the body is still ours to read.
+//
+// Closing the returned reader releases the request's deadline.
+func (c *Client) streamRaw(ctx context.Context, path string) (io.ReadCloser, error) {
+	ctx, cancel := context.WithTimeout(ctx, FileTransferTimeout)
+	fail := func(err error) (io.ReadCloser, error) {
+		cancel()
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return fail(err)
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	req.Header.Set("User-Agent", "miabi-cli/"+Version)
+	// Same Accept as every other call: it makes an SSO gateway or WAF answer with
+	// an error document rather than the HTML sign-in page it hands browsers.
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.stream.Do(req)
+	if err != nil {
+		return fail(err)
+	}
+	if c.verbose {
+		fmt.Fprintf(os.Stderr, "GET %s -> %s\n", req.URL, resp.Status)
+	}
+
+	// A body read for diagnosis, not for the caller: bounded, and the response is
+	// finished with either way.
+	reject := func() ([]byte, *client.Response) {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, errorBodyLimit))
+		_ = resp.Body.Close()
+		return b, &client.Response{Response: resp, Body: b, Method: http.MethodGet, URL: req.URL.String()}
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, cr := reject()
+		var env envelope
+		if json.Unmarshal(b, &env) == nil && env.Error != nil {
+			return fail(env.Error)
+		}
+		if len(bytes.TrimSpace(b)) == 0 {
+			return fail(fmt.Errorf("GET %s: HTTP %d", req.URL, resp.StatusCode))
+		}
+		return fail(notAPIResponse(cr))
+	}
+	// The download handler always answers application/octet-stream. HTML here is a
+	// sign-in page or interstitial that would otherwise be written to disk as if it
+	// were the file.
+	if kind, _, _ := strings.Cut(resp.Header.Get("Content-Type"), ";"); strings.TrimSpace(kind) == "text/html" {
+		_, cr := reject()
+		return fail(notAPIResponse(cr))
+	}
+	return &cancelOnClose{ReadCloser: resp.Body, cancel: cancel}, nil
+}
+
+// cancelOnClose ties the request's context to the body's lifetime: the deadline
+// has to outlive streamRaw, and cancelling it is what stops a stalled transfer
+// from holding the connection open.
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (c *cancelOnClose) Close() error {
+	err := c.ReadCloser.Close()
+	c.cancel()
+	return err
+}
+
+// getRaw fetches a body the API serves verbatim, buffered, for the small ones —
+// a backup run's log. A failure still answers the envelope, so errors are decoded
+// the usual way. Use streamRaw for anything that can be large.
 func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
 	resp, err := c.c.Get(path).WithContext(ctx).Timeout(FileTransferTimeout).Do()
 	if err != nil {
