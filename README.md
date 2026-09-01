@@ -349,9 +349,10 @@ miabi delete -f docs/stack.yaml             # delete them
 ```
 
 Each document is `{ apiVersion: miabi.io/v1, kind, metadata: { name }, spec: { … } }`.
-Kinds: `Application`, `Stack`, `Database`, `Volume`, `Secret`, `Route`, `Domain`,
-`Project`. Names match `^[a-z0-9][a-z0-9-]*$` (Domain names are FQDNs); use a
-hyphen-free name for anything referenced via dotted `{{ .secrets.<name> }}` /
+Kinds: `Application`, `Stack`, `Database`, `Volume`, `Secret`, `Config`,
+`Registry`, `Middleware`, `Route`, `Domain`, `Project`. Names match
+`^[a-z0-9][a-z0-9-]*$` (Domain names are FQDNs); use a hyphen-free name for
+anything referenced via dotted `{{ .secrets.<name> }}` /
 `{{ .databases.<name>.* }}` interpolation.
 
 - The app argument is a **slug** (or numeric id); the workspace comes from
