@@ -1,11 +1,11 @@
 module github.com/miabi-io/cli
 
-go 1.26.3
+go 1.27.1
 
 require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/jkaninda/okapi v0.11.0
-	github.com/miabi-io/miabi v1.9.2
+	github.com/miabi-io/miabi v1.10.1
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.1
 	github.com/spf13/cobra v1.8.1

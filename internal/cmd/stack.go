@@ -25,8 +25,12 @@ func init() {
 		newStatusCmd(),
 		newUninstallCmd(),
 		newMigrateConfigCmd(),
+		newStackEnvCmd(),
 	)
-	rootCmd.AddCommand(stackCmd, newSetupCmd("setup"), newUpgradeCmd("upgrade"))
+
+	setupCmd := newSetupCmd("setup")
+	setupCmd.AddCommand(newStackEnvCmd())
+	rootCmd.AddCommand(stackCmd, setupCmd, newUpgradeCmd("upgrade"))
 }
 
 var stackCmd = &cobra.Command{
@@ -39,9 +43,7 @@ var stackCmd = &cobra.Command{
 		"  sudo miabi upgrade\n" +
 		"  sudo miabi stack status\n" +
 		"  sudo miabi stack restart miabi-gateway",
-	// A bare `miabi stack` shows help; an unknown subcommand must FAIL. Cobra's default for a
-	// group is to print help and exit 0 either way — which would let a script still calling the
-	// retired `stack install` report success while doing nothing at all.
+
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 }
