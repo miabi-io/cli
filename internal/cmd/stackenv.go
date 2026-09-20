@@ -57,13 +57,14 @@ func newStackEnvCmd() *cobra.Command {
 }
 
 // readPath resolves the manifest for the read-only verbs. They need no Docker connection — only the
-// file — but it is mode 0600, so say "run as root" rather than letting it fail as a bare
+// file — and it is mode 0600, so say who can read it rather than letting it fail as a bare
 // permission error the operator has to interpret.
 func readPath(o *stackEnvOpts) (string, error) {
-	if err := host.RequireRoot(); err != nil {
+	path := host.ManifestPath(o.file)
+	if err := host.RequireReadable(path); err != nil {
 		return "", err
 	}
-	return host.ManifestPath(o.file), nil
+	return path, nil
 }
 
 func newStackEnvLsCmd(o *stackEnvOpts) *cobra.Command {
