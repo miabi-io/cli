@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -54,13 +55,51 @@ func stackCtx() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
 
-// openHost resolves the manifest path, checks privileges, and connects to Docker. Every stack
-// command starts here.
+// openHost resolves the manifest path, checks that this process can write it, and connects to
+// Docker. Every stack command starts here.
 func openHost(file string) (*host.Session, error) {
-	if err := host.RequireRoot(); err != nil {
+	path := host.ManifestPath(file)
+	if err := host.RequireWritable(path); err != nil {
 		return nil, err
 	}
-	return host.Open(host.ManifestPath(file), func(f string, a ...any) { fmt.Printf("  "+f+"\n", a...) })
+	return host.Open(path, func(f string, a ...any) { fmt.Printf("  "+f+"\n", a...) })
+}
+
+// setupManifestPath decides where a new install's manifest goes. When the resolved path is not
+// writable — the ordinary "ran without sudo" case — it offers the per-user install instead of
+// refusing outright, because that install works: everything a stack command needs is the manifest
+// and the Docker socket, and neither requires being root.
+func setupManifestPath(o *setupOpts) (string, error) {
+	path := host.ManifestPath(o.file)
+	err := host.RequireWritable(path)
+	if err == nil {
+		return path, nil
+	}
+
+	if _, serr := os.Stat(path); serr == nil {
+		return "", fmt.Errorf("%s belongs to the user that installed it\n\n"+
+			"  Converge it:  sudo miabi setup …", path)
+	}
+	user := host.UserManifestPath()
+	explicit := strings.TrimSpace(o.file) != "" || strings.TrimSpace(os.Getenv(stack.ConfigPathEnv)) != ""
+	if explicit || o.yes || user == "" || user == path {
+		return "", err
+	}
+	if other := host.OtherInstall(user); other != "" {
+		return "", fmt.Errorf("this host already has an install at %s\n\n"+
+			"  A second one would converge the same containers against the same Docker daemon.\n"+
+			"  Converge that one:  sudo miabi setup …", other)
+	}
+	ui.Warn("%s is not writable — you are not root.", filepath.Dir(path))
+	if !ui.Confirm(fmt.Sprintf("Install under your own account instead, in %s?", filepath.Dir(user))) {
+		return "", err
+	}
+	if werr := host.RequireWritable(user); werr != nil {
+		return "", werr
+	}
+
+	ui.Info("Installing into %s. Stack commands find it there on their own; no sudo, and nothing to export.", filepath.Dir(user))
+	return user, nil
 }
 
 // platformRepo is where the control plane is pulled from when the operator names no registry.
@@ -148,7 +187,11 @@ func newSetupCmd(use string) *cobra.Command {
 }
 
 func runSetup(_ *cobra.Command, o *setupOpts) error {
-	sess, err := openHost(o.file)
+	file, err := setupManifestPath(o)
+	if err != nil {
+		return err
+	}
+	sess, err := openHost(file)
 	if err != nil {
 		return err
 	}
@@ -383,7 +426,7 @@ func newMigrateConfigCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			if err := host.RequireRoot(); err != nil {
+			if err := host.RequireWritable(stack.DefaultConfigPath); err != nil {
 				return err
 			}
 			from, to := stack.LegacyConfigPath, stack.DefaultConfigPath
