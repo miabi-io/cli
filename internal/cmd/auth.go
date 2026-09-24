@@ -25,12 +25,39 @@ import (
 var (
 	loginWeb       bool
 	loginNoBrowser bool
+	loginScopes    []string
 )
+
+// grantableScopes are the scopes a login token may carry. admin and "*" are absent because the
+// server refuses to mint a CLI token with either — a login token is never an administrative one.
+var grantableScopes = map[string]bool{"read": true, "write": true, "deploy": true}
 
 func init() {
 	loginCmd.Flags().BoolVar(&loginWeb, "web", false, "force the browser sign-in flow, even if MIABI_TOKEN is set")
 	loginCmd.Flags().BoolVar(&loginNoBrowser, "no-browser", false, "print the token page URL and paste the token back (no local callback)")
+	loginCmd.Flags().StringSliceVar(&loginScopes, "scopes", nil, "narrow the token: read, write, deploy (default: all three)")
 	rootCmd.AddCommand(loginCmd, whoamiCmd)
+}
+
+// normalizeLoginScopes validates the requested scopes locally so a typo fails here, with the list
+// of what is accepted, rather than as an opaque rejection after the browser round-trip.
+func normalizeLoginScopes(in []string) ([]string, error) {
+	out := make([]string, 0, len(in))
+	seen := map[string]bool{}
+	for _, s := range in {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if s == "" {
+			continue
+		}
+		if !grantableScopes[s] {
+			return nil, fmt.Errorf("unknown scope %q — a login token may carry read, write or deploy", s)
+		}
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out, nil
 }
 
 var loginCmd = &cobra.Command{
@@ -40,7 +67,13 @@ var loginCmd = &cobra.Command{
 		"minted token automatically via a one-time local callback — no copy-paste.\n\n" +
 		"With --token/MIABI_TOKEN set, validates that token against GET /me and saves it\n" +
 		"(use this in CI). With --no-browser, prints the token page URL and reads a pasted\n" +
-		"token instead — for machines that can't open a local callback.",
+		"token instead — for machines that can't open a local callback.\n\n" +
+		"--scopes narrows what the token may do: read, write, deploy. Use --scopes read for\n" +
+		"a context you only read from, such as one serving `miabi mcp` to an AI assistant.",
+	Example: "  # A read-only context, for `miabi mcp`:\n" +
+		"  miabi login --context prod-ro --scopes read\n\n" +
+		"  # Deploy-only credentials for CI:\n" +
+		"  miabi login --scopes deploy",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		// An explicit token (flag or env) is the non-interactive path: validate and
 		// save it directly, no browser. --web overrides to force the browser flow.
@@ -51,10 +84,14 @@ var loginCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if loginNoBrowser {
-			return runManualLogin(serverURL)
+		scopes, err := normalizeLoginScopes(loginScopes)
+		if err != nil {
+			return err
 		}
-		return runLoopbackLogin(serverURL)
+		if loginNoBrowser {
+			return runManualLogin(serverURL, scopes)
+		}
+		return runLoopbackLogin(serverURL, scopes)
 	},
 }
 
@@ -91,7 +128,7 @@ func runTokenLogin() error {
 // random loopback port, opens the console's /cli/authorize page pointed at that
 // callback, and waits for the browser to hand back a single-use code — which it
 // exchanges for the token. The token never touches the clipboard or the terminal.
-func runLoopbackLogin(serverURL string) error {
+func runLoopbackLogin(serverURL string, scopes []string) error {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return fmt.Errorf("could not start the local login server: %w", err)
@@ -105,6 +142,9 @@ func runLoopbackLogin(serverURL string) error {
 	}
 
 	authorizeURL := serverURL + "/cli/authorize?redirect_uri=" + url.QueryEscape(callback) + "&state=" + url.QueryEscape(state)
+	if len(scopes) > 0 {
+		authorizeURL += "&scopes=" + url.QueryEscape(strings.Join(scopes, ","))
+	}
 
 	type result struct {
 		code string
@@ -158,14 +198,17 @@ func runLoopbackLogin(serverURL string) error {
 	if err != nil {
 		return fmt.Errorf("could not retrieve the login token: %w", err)
 	}
-	return persistBrowserLogin(serverURL, tok.Token)
+	return persistBrowserLogin(serverURL, tok.Token, scopes)
 }
 
 // runManualLogin is the --no-browser fallback: it opens (or prints) the console's
 // "Copy login command" page and reads a pasted token from stdin. For machines
 // that can reach a browser elsewhere but can't accept a local callback.
-func runManualLogin(serverURL string) error {
+func runManualLogin(serverURL string, scopes []string) error {
 	tokenPage := serverURL + "/request-token"
+	if len(scopes) > 0 {
+		tokenPage += "?scopes=" + url.QueryEscape(strings.Join(scopes, ","))
+	}
 	fmt.Printf("Open this page, sign in, and copy the token:\n  %s\n", tokenPage)
 	_ = openBrowser(tokenPage)
 	fmt.Print("Paste your token: ")
@@ -177,12 +220,12 @@ func runManualLogin(serverURL string) error {
 	if token == "" {
 		return fmt.Errorf("no token entered")
 	}
-	return persistBrowserLogin(serverURL, token)
+	return persistBrowserLogin(serverURL, token, scopes)
 }
 
 // persistBrowserLogin validates a token minted by a browser flow against /me and
 // saves the context, honoring the current --certificate-authority/--insecure trust.
-func persistBrowserLogin(serverURL, token string) error {
+func persistBrowserLogin(serverURL, token string, wantScopes []string) error {
 	c, err := api.New(api.Options{BaseURL: serverURL, Token: token, CAFile: flagCA, InsecureSkip: flagInsecure, Verbose: flagVerbose})
 	if err != nil {
 		return err
@@ -191,7 +234,37 @@ func persistBrowserLogin(serverURL, token string) error {
 	if err != nil {
 		return fmt.Errorf("token rejected: %w", err)
 	}
+	if err := assertScopes(wantScopes, me.Auth.Scopes); err != nil {
+		return err
+	}
 	return saveLogin(serverURL, token, config.Server{URL: serverURL, CA: flagCA, InsecureSkip: flagInsecure}, me)
+}
+
+// assertScopes refuses to save a token broader than the one asked for. A server older than the
+// --scopes flag ignores the request and mints its full default; saving that as if it were
+// read-only is exactly the false assurance this flag exists to remove.
+func assertScopes(want, got []string) error {
+	if len(want) == 0 {
+		return nil
+	}
+	allowed := map[string]bool{}
+	for _, s := range want {
+		allowed[s] = true
+	}
+	var extra []string
+	for _, s := range got {
+		if !allowed[s] {
+			extra = append(extra, s)
+		}
+	}
+	if len(extra) == 0 {
+		return nil
+	}
+	return fmt.Errorf(
+		"the server issued a token with scopes [%s] but --scopes asked for [%s]\n"+
+			"This server predates --scopes and ignored it. Upgrade it, or re-run without the flag\n"+
+			"and mint a narrowed key from Developers → API Keys instead.",
+		strings.Join(got, ", "), strings.Join(want, ", "))
 }
 
 // saveLogin writes the server, token, and identity into the resolved context and
