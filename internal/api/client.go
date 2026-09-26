@@ -214,6 +214,14 @@ func (c *Client) put(ctx context.Context, path string, body, out any) error {
 	return c.do(rb, out)
 }
 
+func (c *Client) patch(ctx context.Context, path string, body, out any) error {
+	rb := c.c.Patch(path).WithContext(ctx)
+	if body != nil {
+		rb = rb.JSONBody(body)
+	}
+	return c.do(rb, out)
+}
+
 func (c *Client) del(ctx context.Context, path string, out any) error {
 	return c.do(c.c.Delete(path).WithContext(ctx), out)
 }
@@ -892,6 +900,20 @@ func (c *Client) RestoreVolumeBackup(ctx context.Context, ws string, id, backupI
 
 func (c *Client) DeleteVolumeBackup(ctx context.Context, ws string, id, backupID uint) error {
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d", ws, id, backupID), nil)
+}
+
+// VerifyVolumeBackup re-checks a completed backup against the bucket: present, the size it was
+// stored at, and for a sealed recovery point, still openable with the workspace passphrase.
+func (c *Client) VerifyVolumeBackup(ctx context.Context, ws string, id, backupID uint) (*VerifyResult, error) {
+	var r VerifyResult
+	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d/verify", ws, id, backupID), nil, &r)
+}
+
+// PinVolumeBackup exempts a recovery point from retention, or lifts the exemption.
+func (c *Client) PinVolumeBackup(ctx context.Context, ws string, id, backupID uint, pinned bool) (*VolumeBackup, error) {
+	var b VolumeBackup
+	return &b, c.patch(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d", ws, id, backupID),
+		map[string]bool{"pinned": pinned}, &b)
 }
 
 // VolumeBackupLogs downloads a run's full log, which the panel serves as a file
