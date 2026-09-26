@@ -29,8 +29,8 @@ github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/jkaninda/logger v0.0.5 h1:fTHKgDsHtuN8rkSBvwe6QStfi8yIdm8O3r0g99dRDTY=
 github.com/jkaninda/logger v0.0.5/go.mod h1:ZUXJ2BdxDPG6e8t6mbKhc2ZFaFi2Iuy/4ukquFrPkFE=
-github.com/jkaninda/okapi v0.11.0 h1:73Ke2BJF5TTYG0DLKkFnSKrAP87bzErRQ6tOxF+DHF4=
-github.com/jkaninda/okapi v0.11.0/go.mod h1:/Bt3U6MpUaGdb7iPKjyRpqFhv9/AIj/SReNbRjGQ1mw=
+github.com/jkaninda/okapi v1.0.0 h1:dVSVkwxuVD44t76fZwpkNuVOm+XH9mZiiLSa6bCgi+g=
+github.com/jkaninda/okapi v1.0.0/go.mod h1:s4DJuYKRgtYzOUY5DwR/LVwkIo+mR4z5qmUwnrseQ9k=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
 github.com/kr/pretty v0.3.1/go.mod h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3xk=
 github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
