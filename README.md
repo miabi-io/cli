@@ -286,7 +286,9 @@ miabi volumes backups web-data                     # history
 miabi volumes backups run web-data [--wait] [--timeout 1h]
 miabi volumes backups logs web-data 42             # a run's full log
 miabi volumes backups restore web-data 42 [--yes]  # overwrites the volume
-miabi volumes backups rm web-data 42 [--yes]       # forgets the run; keeps the object
+miabi volumes backups rm web-data 42 [--yes]       # deletes the record and its archive
+miabi volumes backups verify web-data 42           # still in the bucket, still openable?
+miabi volumes backups pin web-data 42              # exempt a recovery point from retention
 ```
 
 `run` hands the work to the panel's worker and returns while the run is still
@@ -298,8 +300,13 @@ mounting it — stop them yourself unless the workload tolerates its filesystem
 changing underneath. The panel restores inline, so the command blocks until the
 restore finishes.
 
-`rm` deletes the record, not the archive: the panel has no S3 delete, so reclaim
-bucket storage with a lifecycle rule.
+`rm` deletes the record and its archive in the bucket.
+
+On Enterprise each backup is a **recovery point**: it has a ref such as
+`mbvol_web-data_20260921T030000Z`, is sealed under the workspace backup passphrase
+when one is set, and is verified as soon as it lands. `verify` repeats that check
+and exits non-zero when it fails; `pin` / `unpin` exempt a point from schedule
+retention. Schedules are managed in the panel.
 
 ### Secrets
 

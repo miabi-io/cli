@@ -20,11 +20,13 @@ func init() {
 	volBackupRestoreCmd.Flags().BoolVarP(&volBackupYes, "yes", "y", false, "skip the confirmation prompt")
 	volBackupRmCmd.Flags().BoolVarP(&volBackupYes, "yes", "y", false, "skip the confirmation prompt")
 
-	for _, c := range []*cobra.Command{volBackupsCmd, volBackupRunCmd, volBackupRestoreCmd, volBackupLogsCmd, volBackupRmCmd} {
+	for _, c := range []*cobra.Command{volBackupsCmd, volBackupRunCmd, volBackupRestoreCmd, volBackupLogsCmd, volBackupRmCmd,
+		volBackupVerifyCmd, volBackupPinCmd, volBackupUnpinCmd} {
 		c.ValidArgsFunction = completeVolumes
 	}
 
-	volBackupsCmd.AddCommand(volBackupRunCmd, volBackupRestoreCmd, volBackupLogsCmd, volBackupRmCmd)
+	volBackupsCmd.AddCommand(volBackupRunCmd, volBackupRestoreCmd, volBackupLogsCmd, volBackupRmCmd,
+		volBackupVerifyCmd, volBackupPinCmd, volBackupUnpinCmd)
 	volCmd.AddCommand(volBackupsCmd)
 }
 
@@ -41,7 +43,9 @@ var volBackupsCmd = &cobra.Command{
 	Long: "Backs a volume's contents up to the workspace's S3 target, and restores them.\n" +
 		"Configure S3 in the panel's workspace backup settings first — without it every\n" +
 		"backup call is refused.\n\n" +
-		"Backups are addressed by the numeric ID the listing shows.",
+		"Backups are addressed by the numeric ID the listing shows.\n\n" +
+		"On Enterprise, each backup is a recovery point: a named ref, sealed under the\n" +
+		"workspace backup passphrase when one is set, and verified once it lands.",
 	Example: "  miabi volumes backups web-data\n" +
 		"  miabi volumes backups run web-data --wait\n" +
 		"  miabi volumes backups restore web-data 42",
@@ -70,10 +74,10 @@ var volBackupsCmd = &cobra.Command{
 			return nil
 		}
 		sort.Slice(backups, func(i, j int) bool { return backups[i].CreatedAt.After(backups[j].CreatedAt) })
-		t := ui.NewTable("ID", "STATUS", "TRIGGER", "SIZE", "ARCHIVE", "DURATION", "AGE")
+		t := ui.NewTable("ID", "STATUS", "TRIGGER", "SIZE", "ARCHIVE", "FLAGS", "VERIFIED", "DURATION", "AGE")
 		for _, b := range backups {
 			t.Row(itoa(int(b.ID)), ui.Status(b.Status), b.Trigger, humanBytes(b.SizeBytes),
-				archiveCell(b), backupDuration(b), ui.Age(b.CreatedAt))
+				archiveCell(b), flagsCell(b), verifiedCell(b), backupDuration(b), ui.Age(b.CreatedAt))
 		}
 		t.Print()
 		return nil
@@ -229,11 +233,9 @@ var volBackupLogsCmd = &cobra.Command{
 var volBackupRmCmd = &cobra.Command{
 	Use:     "rm <volume> <backup-id>",
 	Aliases: []string{"delete"},
-	Short:   "Delete a backup record",
-	Long: "Removes the backup from the history. The archive object is left in the bucket —\n" +
-		"the panel has no S3 delete — so reclaim that storage with a bucket lifecycle\n" +
-		"rule, not with this command.",
-	Args: cobra.ExactArgs(2),
+	Short:   "Delete a backup and its archive",
+	Long:    "Removes the backup from the history and its archive from the bucket.",
+	Args:    cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
 		ctx := context.Background()
 		c, ws, id, err := volumeConn(ctx, args[0])
@@ -253,9 +255,86 @@ var volBackupRmCmd = &cobra.Command{
 		if err := c.DeleteVolumeBackup(ctx, ws, id, backupID); err != nil {
 			return err
 		}
-		ui.Success("Deleted backup #%d %s", backupID, ui.Dim("(its S3 archive is kept)"))
+		ui.Success("Deleted backup #%d", backupID)
 		return nil
 	},
+}
+
+var volBackupVerifyCmd = &cobra.Command{
+	Use:   "verify <volume> <backup-id>",
+	Short: "Check a backup is still intact in the bucket",
+	Long: "Checks the archive is still in the bucket at the size it was stored, and that a\n" +
+		"sealed recovery point still opens with the workspace passphrase. It does not\n" +
+		"download the archive. Exits non-zero when the check fails.",
+	Example: "  miabi volumes backups verify web-data 42",
+	Args:    cobra.ExactArgs(2),
+	RunE: func(_ *cobra.Command, args []string) error {
+		ctx := context.Background()
+		c, ws, id, err := volumeConn(ctx, args[0])
+		if err != nil {
+			return err
+		}
+		backupID, err := parseBackupID(args[1])
+		if err != nil {
+			return err
+		}
+		res, err := c.VerifyVolumeBackup(ctx, ws, id, backupID)
+		if err != nil {
+			return err
+		}
+		if structured() {
+			_ = emit(res)
+		} else if res.OK {
+			ui.Success("Backup #%d is intact", backupID)
+		} else {
+			ui.Fail("Backup #%d failed verification: %s", backupID, res.Error)
+		}
+		if !res.OK {
+			return fmt.Errorf("backup #%d failed verification", backupID)
+		}
+		return nil
+	},
+}
+
+var volBackupPinCmd = &cobra.Command{
+	Use:     "pin <volume> <backup-id>",
+	Short:   "Keep a recovery point regardless of retention",
+	Example: "  miabi volumes backups pin web-data 42",
+	Args:    cobra.ExactArgs(2),
+	RunE:    func(_ *cobra.Command, args []string) error { return setVolumeBackupPin(args, true) },
+}
+
+var volBackupUnpinCmd = &cobra.Command{
+	Use:     "unpin <volume> <backup-id>",
+	Short:   "Let retention prune a recovery point again",
+	Example: "  miabi volumes backups unpin web-data 42",
+	Args:    cobra.ExactArgs(2),
+	RunE:    func(_ *cobra.Command, args []string) error { return setVolumeBackupPin(args, false) },
+}
+
+func setVolumeBackupPin(args []string, pinned bool) error {
+	ctx := context.Background()
+	c, ws, id, err := volumeConn(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	backupID, err := parseBackupID(args[1])
+	if err != nil {
+		return err
+	}
+	b, err := c.PinVolumeBackup(ctx, ws, id, backupID, pinned)
+	if err != nil {
+		return err
+	}
+	if structured() {
+		return emit(b)
+	}
+	if pinned {
+		ui.Success("Pinned %s", b.Ref)
+	} else {
+		ui.Success("Unpinned %s", b.Ref)
+	}
+	return nil
 }
 
 func parseBackupID(ref string) (uint, error) {
@@ -276,6 +355,38 @@ func archiveCell(b api.VolumeBackup) string {
 		return b.Filename
 	}
 	return b.S3Bucket + "/" + strings.Trim(b.S3Path+"/"+b.Filename, "/")
+}
+
+// flagsCell summarises what makes a row a recovery point, so a plain archive reads as "-".
+func flagsCell(b api.VolumeBackup) string {
+	var f []string
+	if b.Ref != "" {
+		f = append(f, "point")
+	}
+	if b.Encrypted {
+		f = append(f, "encrypted")
+	}
+	if b.Pinned {
+		f = append(f, "pinned")
+	}
+	if b.Consistency != "" {
+		f = append(f, b.Consistency)
+	}
+	if len(f) == 0 {
+		return "-"
+	}
+	return strings.Join(f, ",")
+}
+
+func verifiedCell(b api.VolumeBackup) string {
+	switch {
+	case b.VerifyStatus == "ok" && b.VerifiedAt != nil:
+		return "ok " + ui.Age(*b.VerifiedAt)
+	case b.VerifyStatus == "failed":
+		return "FAILED"
+	default:
+		return "-"
+	}
 }
 
 // backupDuration renders how long a settled run took. A run still in flight has
