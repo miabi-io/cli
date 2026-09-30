@@ -301,6 +301,24 @@ restore finishes.
 `rm` deletes the record, not the archive: the panel has no S3 delete, so reclaim
 bucket storage with a lifecycle rule.
 
+### Moving an app to another location (Enterprise)
+
+```bash
+miabi apps migrate web --location eu-east --plan            # what would move, and what blocks it
+miabi apps migrate web --location eu-east                   # confirm, then follow it to the cutover
+miabi apps migrate web --location eu-east --db shop-db=new  # restore a shared database into a new instance
+miabi apps migrate web --location eu-east --cutover manual  # copy the data, then wait
+miabi migrations [web]                                      # history
+miabi migrations show 12
+miabi migrations cutover|cancel|rollback|finalize 12
+```
+
+The data is copied while the app keeps serving; the app stops only for the final
+copy and a deploy. `--db` takes `INSTANCE=move`, `=new` or `=existing:<instance-id>`.
+`migrate` exits non-zero when the move fails or is rolled back. The old copy is kept
+for 7 days: `rollback` returns to it (changes made since the cutover are lost),
+`finalize` deletes it now.
+
 ### Secrets
 
 The workspace **vault**: values encrypted at rest, write-only over the API, and
@@ -371,7 +389,7 @@ token, workspace, and RBAC. **No model runs inside `miabi`;** you bring your own
 
 It exposes three MCP surfaces:
 
-- **Tools** — `list`/`get` apps, deployments, releases, databases, and secret *names*.
+- **Tools** — `list`/`get` apps, deployments, releases, databases, location migrations, and secret *names*.
   **Read-only by default**; `--allow-write` adds the mutating tools (`deploy_app`,
   `restart_app`, `start_app`, `stop_app`, `rollback_app`), annotated as destructive so
   clients prompt before calling them. Secret *values* are never returned.
