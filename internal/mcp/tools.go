@@ -113,6 +113,47 @@ func (s *Server) registerTools() {
 	})
 	s.register(tool{
 		def: toolDef{
+			Name:        "list_migrations",
+			Description: "List location migrations (an app moved with its volumes and databases to another location), for one app or the whole workspace.",
+			InputSchema: object(map[string]any{"workspace": wsProp, "app": str("application handle or numeric id (optional)")}),
+		},
+		readOnly: true,
+		handler: func(ctx context.Context, s *Server, args map[string]any) (any, error) {
+			if a, _ := args["app"].(string); a != "" {
+				ws, appID, err := s.resolveApp(ctx, args)
+				if err != nil {
+					return nil, err
+				}
+				return s.client.AppMigrations(ctx, ws, appID)
+			}
+			ws, err := s.resolveWS(ctx, args)
+			if err != nil {
+				return nil, err
+			}
+			return s.client.Migrations(ctx, ws)
+		},
+	})
+	s.register(tool{
+		def: toolDef{
+			Name:        "get_migration",
+			Description: "Get one location migration with its phase, per-volume and per-database progress, and report.",
+			InputSchema: object(map[string]any{"workspace": wsProp, "id": map[string]any{"type": "integer", "description": "migration id"}}, "id"),
+		},
+		readOnly: true,
+		handler: func(ctx context.Context, s *Server, args map[string]any) (any, error) {
+			ws, err := s.resolveWS(ctx, args)
+			if err != nil {
+				return nil, err
+			}
+			id, ok := args["id"].(float64)
+			if !ok || id <= 0 {
+				return nil, fmt.Errorf("id must be a positive integer")
+			}
+			return s.client.Migration(ctx, ws, uint(id))
+		},
+	})
+	s.register(tool{
+		def: toolDef{
 			Name:        "list_deployments",
 			Description: "List an application's deployment history (most recent first).",
 			InputSchema: object(map[string]any{"workspace": wsProp, "app": str("application handle or numeric id")}, "app"),
