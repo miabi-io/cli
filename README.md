@@ -286,7 +286,9 @@ miabi volumes backups web-data                     # history
 miabi volumes backups run web-data [--wait] [--timeout 1h]
 miabi volumes backups logs web-data 42             # a run's full log
 miabi volumes backups restore web-data 42 [--yes]  # overwrites the volume
-miabi volumes backups rm web-data 42 [--yes]       # forgets the run; keeps the object
+miabi volumes backups rm web-data 42 [--yes]       # deletes the record and its archive
+miabi volumes backups verify web-data 42           # still in the bucket, still openable?
+miabi volumes backups pin web-data 42              # exempt a recovery point from retention
 ```
 
 `run` hands the work to the panel's worker and returns while the run is still
@@ -298,8 +300,31 @@ mounting it — stop them yourself unless the workload tolerates its filesystem
 changing underneath. The panel restores inline, so the command blocks until the
 restore finishes.
 
-`rm` deletes the record, not the archive: the panel has no S3 delete, so reclaim
-bucket storage with a lifecycle rule.
+`rm` deletes the record and its archive in the bucket.
+
+On Enterprise each backup is a **recovery point**: it has a ref such as
+`mbvol_web-data_20260921T030000Z`, is sealed under the workspace backup passphrase
+when one is set, and is verified as soon as it lands. `verify` repeats that check
+and exits non-zero when it fails; `pin` / `unpin` exempt a point from schedule
+retention. Schedules are managed in the panel.
+
+### Moving an app to another location (Enterprise)
+
+```bash
+miabi apps migrate web --location eu-east --plan            # what would move, and what blocks it
+miabi apps migrate web --location eu-east                   # confirm, then follow it to the cutover
+miabi apps migrate web --location eu-east --db shop-db=new  # restore a shared database into a new instance
+miabi apps migrate web --location eu-east --cutover manual  # copy the data, then wait
+miabi migrations [web]                                      # history
+miabi migrations show 12
+miabi migrations cutover|cancel|rollback|finalize 12
+```
+
+The data is copied while the app keeps serving; the app stops only for the final
+copy and a deploy. `--db` takes `INSTANCE=move`, `=new` or `=existing:<instance-id>`.
+`migrate` exits non-zero when the move fails or is rolled back. The old copy is kept
+for 7 days: `rollback` returns to it (changes made since the cutover are lost),
+`finalize` deletes it now.
 
 ### Secrets
 
@@ -371,7 +396,7 @@ token, workspace, and RBAC. **No model runs inside `miabi`;** you bring your own
 
 It exposes three MCP surfaces:
 
-- **Tools** — `list`/`get` apps, deployments, releases, databases, and secret *names*.
+- **Tools** — `list`/`get` apps, deployments, releases, databases, location migrations, and secret *names*.
   **Read-only by default**; `--allow-write` adds the mutating tools (`deploy_app`,
   `restart_app`, `start_app`, `stop_app`, `rollback_app`), annotated as destructive so
   clients prompt before calling them. Secret *values* are never returned.

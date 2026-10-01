@@ -465,6 +465,15 @@ type VolumeBackup struct {
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
+
+	// Ref names a recovery point (Enterprise); empty on a plain archive.
+	Ref          string     `json:"ref,omitempty"`
+	Consistency  string     `json:"consistency,omitempty"` // hot
+	Encrypted    bool       `json:"encrypted"`
+	Pinned       bool       `json:"pinned"`
+	VerifiedAt   *time.Time `json:"verified_at,omitempty"`
+	VerifyStatus string     `json:"verify_status,omitempty"` // ok | failed; empty = never
+	VerifyError  string     `json:"verify_error,omitempty"`
 }
 
 // Backup-run statuses. These are NOT the deploy statuses: "running" is terminal
@@ -488,6 +497,9 @@ func IsBackupFailure(status string) bool { return status == BackupFailed }
 // VolumeBackupStatus is GET .../volumes/{id}/backups/status.
 type VolumeBackupStatus struct {
 	S3Configured bool `json:"s3_configured"`
+	Entitled     bool `json:"entitled"`
+	Mutable      bool `json:"mutable"`
+	Sealing      bool `json:"sealing"`
 }
 
 // AttachVolumeRequest is the body of POST .../apps/{id}/volumes.
@@ -703,4 +715,15 @@ type Backup struct {
 	Error       string     `json:"error,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 	FinishedAt  *time.Time `json:"finished_at,omitempty"`
+}
+
+// VerifyResult is what a backup verification found.
+type VerifyResult struct {
+	Ref        string   `json:"ref"`
+	OK         bool     `json:"ok"`
+	Checked    int      `json:"checked"`
+	Missing    []string `json:"missing,omitempty"`
+	Resized    []string `json:"resized,omitempty"`
+	EnvelopeOK bool     `json:"envelope_ok"`
+	Error      string   `json:"error,omitempty"`
 }
