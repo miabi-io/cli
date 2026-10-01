@@ -159,6 +159,9 @@ const (
 	StatusSucceeded = "succeeded"
 	StatusRunning   = "running" // legacy terminal success
 	StatusFailed    = "failed"
+	// StatusCanary is a canary serving part of the traffic. It is not terminal: it
+	// waits for a human to promote or abort it.
+	StatusCanary = "canary"
 )
 
 // IsTerminal reports whether a deployment status will not change further.
@@ -173,6 +176,10 @@ func IsTerminal(status string) bool {
 
 // IsFailure reports a terminal failure.
 func IsFailure(status string) bool { return status == StatusFailed }
+
+// IsSettled reports whether waiting on a deployment can stop: it is terminal, or
+// it is a canary that will not move until someone promotes it.
+func IsSettled(status string) bool { return IsTerminal(status) || status == StatusCanary }
 
 // DeployRequest is the body of POST .../deploy. image is not part of the deploy
 // contract (the app owns its image); only a tag/registry/strategy override.
@@ -204,8 +211,30 @@ type PipelineRun struct {
 	Branch     string     `json:"branch,omitempty"`
 	Commit     string     `json:"commit,omitempty"`
 	NoCache    bool       `json:"no_cache,omitempty"`
+	Error      string     `json:"error,omitempty"`
 	StartedAt  *time.Time `json:"started_at,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
+}
+
+// IsRunTerminal reports whether a pipeline run has settled.
+func IsRunTerminal(status string) bool {
+	switch status {
+	case "succeeded", "failed", "canceled":
+		return true
+	default:
+		return false
+	}
+}
+
+// DeployResult is what deploy and rollback answer. An app whose repository owns a
+// pipeline deploys by running it, so exactly one of Deployment and Run is set.
+type DeployResult struct {
+	Kind       string       `json:"kind"` // deployment | pipeline_run
+	Deployment *Deployment  `json:"deployment,omitempty"`
+	Run        *PipelineRun `json:"run,omitempty"`
+	// WaitTimedOut is set when the server was asked to wait and gave up first.
+	WaitTimedOut bool `json:"wait_timed_out,omitempty"`
 }
 
 // TriggerPipelineRequest is the body of POST .../pipelines/{id}/trigger.
@@ -604,6 +633,88 @@ type ApplyResult struct {
 	Applied  int            `json:"applied"`
 	DryRun   bool           `json:"dry_run"`
 	Failures []ApplyFailure `json:"failures,omitempty"`
+}
+
+// === monitoring, alerts, events ==========================================
+
+// OverviewApp is one application's health in the workspace overview.
+type OverviewApp struct {
+	ID     uint   `json:"id"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Health string `json:"health"` // healthy | unhealthy | unknown
+}
+
+// WorkspaceOverview is GET .../overview.
+type WorkspaceOverview struct {
+	Apps         []OverviewApp `json:"apps"`
+	TotalApps    int           `json:"total_apps"`
+	Running      int           `json:"running"`
+	Failed       int           `json:"failed"`
+	Databases    int           `json:"databases"`
+	Stacks       int           `json:"stacks"`
+	RecentEvents []Event       `json:"recent_events"`
+}
+
+// Alert is a deduplicated workspace alert.
+type Alert struct {
+	ID          uint      `json:"id"`
+	Category    string    `json:"category"`
+	Severity    string    `json:"severity"`
+	State       string    `json:"state"` // firing | acknowledged | resolved
+	Title       string    `json:"title"`
+	Body        string    `json:"body"`
+	Count       int64     `json:"count"`
+	SubjectType string    `json:"subject_type"`
+	SubjectRef  string    `json:"subject_ref"`
+	FirstSeen   time.Time `json:"first_seen"`
+	LastSeen    time.Time `json:"last_seen"`
+}
+
+// Event is one timeline event. AppName is only filled on the workspace-wide feed.
+type Event struct {
+	ID            uint              `json:"id"`
+	SubjectType   string            `json:"subject_type,omitempty"`
+	ApplicationID uint              `json:"application_id,omitempty"`
+	DatabaseID    uint              `json:"database_id,omitempty"`
+	Type          string            `json:"type"`
+	Severity      string            `json:"severity"`
+	Message       string            `json:"message"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	AppName       string            `json:"app_name,omitempty"`
+	DatabaseName  string            `json:"database_name,omitempty"`
+	CreatedAt     time.Time         `json:"created_at"`
+}
+
+// TrafficSummary is the part of GET .../analytics/summary the CLI reads.
+type TrafficSummary struct {
+	Totals struct {
+		Requests     int64   `json:"requests"`
+		ErrorRate    float64 `json:"error_rate"` // 0..1
+		AvgLatencyMS float64 `json:"avg_latency_ms"`
+		P95LatencyMS float64 `json:"p95_latency_ms"`
+		P99LatencyMS float64 `json:"p99_latency_ms"`
+	} `json:"totals"`
+	Status struct {
+		S2xx int64 `json:"s2xx"`
+		S3xx int64 `json:"s3xx"`
+		S4xx int64 `json:"s4xx"`
+		S5xx int64 `json:"s5xx"`
+	} `json:"status"`
+}
+
+// Backup is one logical-database backup run.
+type Backup struct {
+	ID          uint       `json:"id"`
+	Number      int        `json:"number"`
+	Status      string     `json:"status"`
+	Trigger     string     `json:"trigger"`
+	Destination string     `json:"destination"`
+	SizeBytes   int64      `json:"size_bytes"`
+	Comment     string     `json:"comment,omitempty"`
+	Error       string     `json:"error,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	FinishedAt  *time.Time `json:"finished_at,omitempty"`
 }
 
 // VerifyResult is what a backup verification found.

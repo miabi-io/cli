@@ -280,7 +280,11 @@ func (s *Server) registerTools() {
 			if err != nil {
 				return nil, err
 			}
-			return s.client.Deploy(ctx, ws, appID, api.DeployRequest{Tag: optString(args, "tag")})
+			res, err := s.client.Deploy(ctx, ws, appID, api.DeployRequest{Tag: optString(args, "tag")}, 0)
+			if err != nil {
+				return nil, err
+			}
+			return deployPayload(res), nil
 		},
 	})
 	s.registerAction("restart_app", "Restart an application.", true, (*api.Client).RestartApp)
@@ -306,9 +310,24 @@ func (s *Server) registerTools() {
 			if err != nil {
 				return nil, err
 			}
-			return s.client.Rollback(ctx, ws, appID, api.RollbackRequest{ReleaseID: uint(rid)})
+			res, err := s.client.Rollback(ctx, ws, appID, api.RollbackRequest{ReleaseID: uint(rid)}, 0)
+			if err != nil {
+				return nil, err
+			}
+			return deployPayload(res), nil
 		},
 	})
+
+	s.registerOpsTools()
+}
+
+// deployPayload keeps a plain deployment's shape unchanged and tags a pipeline
+// run with its kind, mirroring the server's own response.
+func deployPayload(res *api.DeployResult) any {
+	if res.Deployment != nil {
+		return res.Deployment
+	}
+	return map[string]any{"kind": res.Kind, "run": res.Run}
 }
 
 // registerAction registers a mutating app-lifecycle tool whose handler is one of
