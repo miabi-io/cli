@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/miabi-io/cli/internal/api"
 	"github.com/miabi-io/cli/internal/ui"
@@ -13,6 +14,8 @@ var (
 	rollbackTo         int
 	rollbackToPrevious bool
 	rollbackYes        bool
+	rollbackWait       bool
+	rollbackTimeout    time.Duration
 )
 
 func init() {
@@ -20,14 +23,16 @@ func init() {
 	f.IntVar(&rollbackTo, "to", 0, "release version to roll back to (see `miabi releases`)")
 	f.BoolVar(&rollbackToPrevious, "to-previous", false, "roll back to the most recent inactive release")
 	f.BoolVarP(&rollbackYes, "yes", "y", false, "skip the confirmation prompt")
+	f.BoolVar(&rollbackWait, "wait", false, "block until the rollback deployment is terminal; non-zero exit on failure")
+	f.DurationVar(&rollbackTimeout, "timeout", 10*time.Minute, "max time to wait with --wait")
 	rollbackCmd.ValidArgsFunction = completeApps
 	appCmd.AddCommand(rollbackCmd)
 }
 
 var rollbackCmd = &cobra.Command{
-	Use:     "rollback [app] (--to <version> | --to-previous)",
+	Use:     "rollback [app] (--to <version> | --to-previous) [--wait]",
 	Short:   "Roll an application back to a previous release",
-	Example: "  miabi apps rollback web --to-previous\n  miabi apps rollback web --to 4",
+	Example: "  miabi apps rollback web --to-previous\n  miabi apps rollback web --to 4 --wait",
 	Args:    cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
@@ -81,14 +86,34 @@ var rollbackCmd = &cobra.Command{
 			}
 		}
 
-		dep, err := c.Rollback(ctx, ws, appID, api.RollbackRequest{ReleaseID: targetID})
+		deadline := time.Now().Add(rollbackTimeout)
+		var wait time.Duration
+		if rollbackWait {
+			wait = rollbackTimeout
+		}
+		var res *api.DeployResult
+		err = withSpinner(rollbackWait, fmt.Sprintf("Rolling %s back to v%d", appRef, targetVersion), func() (err error) {
+			res, err = c.Rollback(ctx, ws, appID, api.RollbackRequest{ReleaseID: targetID}, wait)
+			return err
+		})
 		if err != nil {
 			return err
 		}
-		if structured() {
-			return emit(dep)
+		dep := res.Deployment
+		if dep == nil {
+			return fmt.Errorf("the server answered the rollback with a %s, not a deployment", res.Kind)
 		}
-		ui.Success("Rolling %s back to v%d (deployment #%d, %s)", ui.Bold(appRef), targetVersion, dep.Number, ui.Status(dep.Status))
-		return nil
+		if !rollbackWait {
+			if structured() {
+				return emit(dep)
+			}
+			ui.Success("Rolling %s back to v%d (deployment #%d, %s)", ui.Bold(appRef), targetVersion, dep.Number, ui.Status(dep.Status))
+			return nil
+		}
+		final, err := settleDeployment(ctx, c, ws, appID, dep, deadline)
+		if err != nil {
+			return err
+		}
+		return reportSettled(final)
 	},
 }

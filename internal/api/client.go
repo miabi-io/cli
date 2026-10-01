@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -132,24 +133,32 @@ type envelope struct {
 // do performs a request and decodes the envelope's data into out (out may be
 // nil). On a non-2xx it returns the server's *APIError when present.
 func (c *Client) do(rb *client.RequestBuilder, out any) error {
+	_, err := c.doResp(rb, out)
+	return err
+}
+
+// doResp is do for callers that also need the response headers.
+func (c *Client) doResp(rb *client.RequestBuilder, out any) (*client.Response, error) {
 	resp, err := rb.Do()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	empty := len(bytes.TrimSpace(resp.Body)) == 0
 	var env envelope
 	switch {
 	case !empty && json.Unmarshal(resp.Body, &env) != nil:
-		return notAPIResponse(resp)
+		return resp, notAPIResponse(resp)
 	case env.Error != nil:
-		return env.Error
+		return resp, apiError(env.Error, resp.StatusCode)
 	case !resp.IsSuccess():
-		return fmt.Errorf("%s %s: HTTP %d", resp.Method, resp.URL, resp.StatusCode)
-	case out == nil || len(env.Data) == 0 || string(env.Data) == "null":
-		return nil
+		return resp, fmt.Errorf("%s %s: HTTP %d", resp.Method, resp.URL, resp.StatusCode)
 	}
-	return json.Unmarshal(env.Data, out)
+	warnScope(resp.Header.Get(scopeRequiredHeader))
+	if out == nil || len(env.Data) == 0 || string(env.Data) == "null" {
+		return resp, nil
+	}
+	return resp, json.Unmarshal(env.Data, out)
 }
 
 // notAPIResponse explains a body that is not the API's JSON envelope. Every /api
@@ -249,27 +258,40 @@ func (c *Client) ResolveWorkspaceName(ctx context.Context, ref, fallback string)
 	if ref == "" {
 		ref = fallback
 	}
-	if ref == "" {
-		ws, err := c.Workspaces(ctx)
+	if ref != "" {
+		// The server resolves a name, UID or id itself, and this also works for a workspace-bound
+		// key, which may not list workspaces.
+		w, err := c.Workspace(ctx, ref)
 		if err != nil {
+			var ae *APIError
+			if errors.As(err, &ae) && (ae.StatusCode == http.StatusNotFound || ae.StatusCode == http.StatusForbidden) {
+				return "", fmt.Errorf("workspace %q not found among your workspaces", ref)
+			}
 			return "", err
 		}
-		if len(ws) == 1 {
-			return ws[0].Name, nil
-		}
-		return "", fmt.Errorf("no workspace selected — pass --workspace, or run `miabi workspace switch <name>`")
+		return w.Name, nil
 	}
 	ws, err := c.Workspaces(ctx)
 	if err != nil {
+		// A workspace-bound key cannot list workspaces; it names its own.
+		if me, merr := c.Me(ctx); merr == nil && me.Auth.WorkspaceID != nil {
+			w, werr := c.Workspace(ctx, strconv.FormatUint(uint64(*me.Auth.WorkspaceID), 10))
+			if werr == nil {
+				return w.Name, nil
+			}
+		}
 		return "", err
 	}
-	idMatch, _ := strconv.ParseUint(ref, 10, 64)
-	for _, w := range ws {
-		if w.Name == ref || w.UID == ref || (idMatch != 0 && w.ID == uint(idMatch)) {
-			return w.Name, nil
-		}
+	if len(ws) == 1 {
+		return ws[0].Name, nil
 	}
-	return "", fmt.Errorf("workspace %q not found among your workspaces", ref)
+	return "", fmt.Errorf("no workspace selected — pass --workspace, or run `miabi workspace switch <name>`")
+}
+
+// Workspace fetches one workspace by name, UID or id.
+func (c *Client) Workspace(ctx context.Context, ref string) (*Workspace, error) {
+	var w Workspace
+	return &w, c.get(ctx, "/api/v1/workspaces/"+url.PathEscape(ref), &w)
 }
 
 // ======== applications ===================================
@@ -308,9 +330,62 @@ func (c *Client) ResolveAppID(ctx context.Context, ws string, ref string) (uint,
 
 //  deploy / rollback / releases
 
-func (c *Client) Deploy(ctx context.Context, ws string, appID uint, req DeployRequest) (*Deployment, error) {
+// MaxServerWait is the longest ?wait= the server accepts on deploy and rollback.
+const MaxServerWait = 900 * time.Second
+
+// Deploy triggers a deployment. A non-zero wait asks the server to hold the
+// request until the deployment (or pipeline run) settles, up to MaxServerWait.
+// Servers that predate ?wait answer at once, so callers must still check the
+// status and poll when it is not settled.
+func (c *Client) Deploy(ctx context.Context, ws string, appID uint, req DeployRequest, wait time.Duration) (*DeployResult, error) {
+	return c.deployCall(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/deploy", ws, appID), req, wait)
+}
+
+// Rollback rolls back to a release. wait behaves as for Deploy.
+func (c *Client) Rollback(ctx context.Context, ws string, appID uint, req RollbackRequest, wait time.Duration) (*DeployResult, error) {
+	return c.deployCall(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/rollback", ws, appID), req, wait)
+}
+
+func (c *Client) deployCall(ctx context.Context, path string, body any, wait time.Duration) (*DeployResult, error) {
+	rb := c.c.Post(path).WithContext(ctx).JSONBody(body)
+	if wait > 0 {
+		wait = min(wait, MaxServerWait)
+		secs := max(int((wait+time.Second-1)/time.Second), 1)
+
+		rb = rb.QueryParam("wait", strconv.Itoa(secs)).Timeout(wait + 30*time.Second)
+	}
+	var raw json.RawMessage
+	resp, err := c.doResp(rb, &raw)
+	if err != nil {
+		return nil, err
+	}
+	res, err := decodeDeployResult(raw)
+	if err != nil {
+		return nil, err
+	}
+	res.WaitTimedOut = resp.Header.Get("X-Miabi-Wait") == "timeout"
+	return res, nil
+}
+
+func decodeDeployResult(raw json.RawMessage) (*DeployResult, error) {
+	var probe struct {
+		Kind string       `json:"kind"`
+		Run  *PipelineRun `json:"run"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return nil, err
+	}
+	if probe.Kind == "pipeline_run" {
+		if probe.Run == nil {
+			return nil, fmt.Errorf("deploy answered a pipeline run without the run")
+		}
+		return &DeployResult{Kind: "pipeline_run", Run: probe.Run}, nil
+	}
 	var d Deployment
-	return &d, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/deploy", ws, appID), req, &d)
+	if err := json.Unmarshal(raw, &d); err != nil {
+		return nil, err
+	}
+	return &DeployResult{Kind: "deployment", Deployment: &d}, nil
 }
 
 // InvalidateBuildCache names a new build cache generation for the app, so the next build (a deploy
@@ -371,19 +446,23 @@ func (c *Client) DeleteApp(ctx context.Context, ws string, appID uint) error {
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d", ws, appID), nil)
 }
 
-func (c *Client) Rollback(ctx context.Context, ws string, appID uint, req RollbackRequest) (*Deployment, error) {
-	var d Deployment
-	return &d, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/rollback", ws, appID), req, &d)
-}
-
 func (c *Client) Deployments(ctx context.Context, ws string, appID uint) ([]Deployment, error) {
 	var deps []Deployment
 	return deps, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/deployments", ws, appID), &deps)
 }
 
-// Deployment resolves a single deployment. The API exposes no per-deployment GET
-// route, so it is found within the (recent) deployments list.
+// Deployment resolves a single deployment. Servers without the per-deployment
+// GET route answer 404 (or 405), and it is then found within the recent list.
 func (c *Client) Deployment(ctx context.Context, ws string, appID, depID uint) (*Deployment, error) {
+	var d Deployment
+	err := c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/deployments/%d", ws, appID, depID), &d)
+	if err == nil {
+		return &d, nil
+	}
+	var ae *APIError
+	if !errors.As(err, &ae) || (ae.StatusCode != http.StatusNotFound && ae.StatusCode != http.StatusMethodNotAllowed) {
+		return nil, err
+	}
 	deps, err := c.Deployments(ctx, ws, appID)
 	if err != nil {
 		return nil, err
@@ -839,7 +918,7 @@ func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
 	if !resp.IsSuccess() {
 		var env envelope
 		if json.Unmarshal(resp.Body, &env) == nil && env.Error != nil {
-			return nil, env.Error
+			return nil, apiError(env.Error, resp.StatusCode)
 		}
 		if len(bytes.TrimSpace(resp.Body)) == 0 {
 			return nil, fmt.Errorf("%s %s: HTTP %d", resp.Method, resp.URL, resp.StatusCode)
@@ -1043,11 +1122,15 @@ func (c *Client) Delete(ctx context.Context, ws string, manifests string) (*Appl
 	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apply", ws), req, &r)
 }
 
-// WaitForDeploy polls a deployment until it reaches a terminal state or the
-// context is cancelled/times out, calling onUpdate (if non-nil) on each status
-// change. It returns the final deployment.
+// deployPollInterval is how often the wait loops re-read state. A variable so the
+// tests do not have to sleep through it.
+var deployPollInterval = 2 * time.Second
+
+// WaitForDeploy polls a deployment until it settles (terminal, or a canary
+// awaiting promotion) or the context is cancelled/times out, calling onUpdate
+// (if non-nil) on each status change. It returns the final deployment.
 func (c *Client) WaitForDeploy(ctx context.Context, ws string, appID, depID uint, onUpdate func(status string)) (*Deployment, error) {
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(deployPollInterval)
 	defer ticker.Stop()
 	last := ""
 	for {
@@ -1061,8 +1144,41 @@ func (c *Client) WaitForDeploy(ctx context.Context, ws string, appID, depID uint
 				onUpdate(d.Status)
 			}
 		}
-		if IsTerminal(d.Status) {
+		if IsSettled(d.Status) {
 			return d, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+// PipelineRun returns one pipeline run.
+func (c *Client) PipelineRun(ctx context.Context, ws string, runID uint) (*PipelineRun, error) {
+	var r PipelineRun
+	return &r, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/pipeline-runs/%d", ws, runID), &r)
+}
+
+// WaitForPipelineRun polls a run until it settles, reporting each status change.
+func (c *Client) WaitForPipelineRun(ctx context.Context, ws string, runID uint, onUpdate func(status string)) (*PipelineRun, error) {
+	ticker := time.NewTicker(deployPollInterval)
+	defer ticker.Stop()
+	last := ""
+	for {
+		r, err := c.PipelineRun(ctx, ws, runID)
+		if err != nil {
+			return nil, err
+		}
+		if r.Status != last {
+			last = r.Status
+			if onUpdate != nil {
+				onUpdate(r.Status)
+			}
+		}
+		if IsRunTerminal(r.Status) {
+			return r, nil
 		}
 		select {
 		case <-ctx.Done():
