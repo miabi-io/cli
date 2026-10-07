@@ -593,6 +593,32 @@ func (c *Client) LogicalDatabases(ctx context.Context, ws string, id uint) ([]Lo
 	return dbs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/databases/%d/databases", ws, id), &dbs)
 }
 
+// AppDatabases lists the databases linked to an app.
+func (c *Client) AppDatabases(ctx context.Context, ws string, appID uint) ([]AppDatabase, error) {
+	var dbs []AppDatabase
+	return dbs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/databases", ws, appID), &dbs)
+}
+
+// AttachDatabase links a logical database to an app and injects its connection.
+func (c *Client) AttachDatabase(ctx context.Context, ws string, appID, dbID uint, req LinkDatabaseRequest) (*LinkDatabaseResult, error) {
+	var r LinkDatabaseResult
+	return &r, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/databases/%d", ws, appID, dbID), req, &r)
+}
+
+func (c *Client) DetachDatabase(ctx context.Context, ws string, appID, dbID uint) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/databases/%d", ws, appID, dbID), nil)
+}
+
+// LinkDatabaseInstance links a whole instance (Redis) to an app.
+func (c *Client) LinkDatabaseInstance(ctx context.Context, ws string, appID, instID uint, req LinkDatabaseRequest) (*LinkDatabaseResult, error) {
+	var r LinkDatabaseResult
+	return &r, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/database-instances/%d", ws, appID, instID), req, &r)
+}
+
+func (c *Client) UnlinkDatabaseInstance(ctx context.Context, ws string, appID, instID uint) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/database-instances/%d", ws, appID, instID), nil)
+}
+
 func (c *Client) CreateLogicalDatabase(ctx context.Context, ws string, id uint, req CreateLogicalDatabaseRequest) (*CreateLogicalDatabaseResult, error) {
 	var r CreateLogicalDatabaseResult
 	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/databases/%d/databases", ws, id), req, &r)

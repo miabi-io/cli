@@ -298,15 +298,43 @@ type DatabaseInstance struct {
 
 // LogicalDatabase is a database hosted on an instance (SQL engines).
 type LogicalDatabase struct {
-	ID            uint      `json:"id"`
-	InstanceID    uint      `json:"instance_id"`
-	Name          string    `json:"name"`
-	Username      string    `json:"username"`
-	Status        string    `json:"status"`
-	ApplicationID *uint     `json:"application_id"`
-	EnvPrefix     string    `json:"env_prefix,omitempty"`
-	SizeBytes     int64     `json:"size_bytes,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID            uint              `json:"id"`
+	InstanceID    uint              `json:"instance_id"`
+	Name          string            `json:"name"`
+	Username      string            `json:"username"`
+	Status        string            `json:"status"`
+	ApplicationID *uint             `json:"application_id"`
+	EnvPrefix     string            `json:"env_prefix,omitempty"`
+	EnvMap        map[string]string `json:"env_map,omitempty"`
+	EnvVars       []string          `json:"env_vars,omitempty"`
+	SizeBytes     int64             `json:"size_bytes,omitempty"`
+	CreatedAt     time.Time         `json:"created_at"`
+}
+
+// AppDatabase is a database linked to an app: a logical database (kind
+// "database") or a whole instance such as Redis (kind "instance", id and name
+// are the instance's).
+type AppDatabase struct {
+	LogicalDatabase
+	Kind         string `json:"kind"`
+	InstanceName string `json:"instance_name"`
+	Engine       string `json:"engine"`
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
+}
+
+// LinkDatabaseRequest sets how a linked database's connection lands in the
+// app env. EnvMap renames a field's var (url, database_url, host, port, name,
+// user, password); an empty name skips it.
+type LinkDatabaseRequest struct {
+	EnvPrefix string            `json:"env_prefix,omitempty"`
+	EnvMap    map[string]string `json:"env_map,omitempty"`
+}
+
+// LinkDatabaseResult reports the vars a link injected.
+type LinkDatabaseResult struct {
+	EnvInjected bool     `json:"env_injected"`
+	EnvVars     []string `json:"env_vars"`
 }
 
 // ConnectionInfo is a revealed database connection (admin credentials / DSN).
