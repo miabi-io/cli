@@ -22,6 +22,7 @@ import (
 func init() {
 	stackCmd.AddCommand(
 		newUpgradeCmd("upgrade"),
+		newApplyCmd(),
 		newRestartCmd(),
 		newStatusCmd(),
 		newUninstallCmd(),
@@ -279,6 +280,36 @@ func runUpgrade(args []string, image, versionFlag, file string, yes bool) error 
 		Component: component, Image: image, Version: versionFlag, Yes: yes,
 		DefaultImage: defaultControlPlaneImage,
 	}, cliUI{})
+}
+
+// apply
+
+func newApplyCmd() *cobra.Command {
+	var file string
+	var yes bool
+	c := &cobra.Command{
+		Use:   "apply",
+		Short: "Bring the running stack in line with the manifest",
+		Long: "Recreates only the components whose spec changed since they were created — the step\n" +
+			"after one or more `miabi stack env set` edits. Nothing changed means nothing restarts.",
+		Example:       "  sudo miabi stack env set MIABI_SMTP_HOST=smtp.example.com MIABI_SMTP_PORT=587\n  sudo miabi stack apply",
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			sess, err := openHost(file)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = sess.Close() }()
+			ctx, cancel := stackCtx()
+			defer cancel()
+			return stackcmd.Apply(ctx, sess.Svc, sess.Manifest, yes, cliUI{})
+		},
+	}
+	c.Flags().StringVarP(&file, "file", "f", "", "manifest path")
+	c.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
+	return c
 }
 
 // restart
