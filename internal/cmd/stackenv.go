@@ -15,13 +15,14 @@ import (
 // installed stack's manifest on this host.
 type stackEnvOpts struct {
 	gateway bool
+	apply   bool
 	noApply bool
 	yes     bool
 	file    string
 }
 
 func (o *stackEnvOpts) options() stackcmd.EnvOptions {
-	return stackcmd.EnvOptions{Gateway: o.gateway, NoApply: o.noApply, Yes: o.yes}
+	return stackcmd.EnvOptions{Gateway: o.gateway, Apply: o.apply, Yes: o.yes}
 }
 
 // newStackEnvCmd builds the env command group. Constructed rather than declared so it can be
@@ -31,15 +32,16 @@ func newStackEnvCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "env",
 		Short: "Read and change the installed stack's environment variables",
-		Long: "Edits the manifest at " + stack.DefaultConfigPath + " and converges the stack, so a\n" +
-			"variable takes effect without hand-editing the file. Only the component whose\n" +
-			"environment changed is recreated.\n\n" +
+		Long: "Edits the manifest at " + stack.DefaultConfigPath + " without touching the running\n" +
+			"stack, so several edits cost one recreate: `miabi stack apply` converges them, and only\n" +
+			"the components whose environment changed are recreated. --apply does both in one step.\n\n" +
 			"Settings the manifest models with their own field — the registry, the networks, the\n" +
 			"backup destination — are refused here and the error names where they live.",
 		Example: "  sudo miabi stack env ls\n" +
-			"  sudo miabi stack env set MIABI_SMTP_HOST=smtp.example.com\n" +
+			"  sudo miabi stack env set MIABI_SMTP_HOST=smtp.example.com MIABI_SMTP_PORT=587\n" +
 			"  sudo miabi stack env set GOMA_LOG_LEVEL=debug --gateway\n" +
-			"  sudo miabi stack env unset MIABI_SMTP_HOST",
+			"  sudo miabi stack env unset MIABI_SMTP_HOST\n" +
+			"  sudo miabi stack apply",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
@@ -133,10 +135,9 @@ func newStackEnvGetCmd(o *stackEnvOpts) *cobra.Command {
 func newStackEnvSetCmd(o *stackEnvOpts) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "set KEY=VALUE [KEY=VALUE…]",
-		Short: "Set variables and converge the stack",
-		Long: "Writes the values into the manifest, shows what changes, and recreates the component\n" +
-			"whose environment they belong to. --no-apply saves without converging, for batching\n" +
-			"several edits behind one `miabi setup`.",
+		Short: "Set variables in the manifest",
+		Long: "Writes the values into the manifest and shows what changes. The running stack keeps the\n" +
+			"old values until `miabi stack apply`; --apply converges right away.",
 		Args:          cobra.MinimumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -155,8 +156,8 @@ func newStackEnvSetCmd(o *stackEnvOpts) *cobra.Command {
 func newStackEnvUnsetCmd(o *stackEnvOpts) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "unset KEY [KEY…]",
-		Short: "Remove variables and converge the stack",
-		Long: "Removes the values from the manifest and recreates the component they belonged to.\n" +
+		Short: "Remove variables from the manifest",
+		Long: "Removes the values from the manifest; `miabi stack apply` (or --apply) makes it live.\n" +
 			"A variable Miabi seeds (TZ, MIABI_LOG_LEVEL) comes back at its default rather than\n" +
 			"disappearing, and the output says so.",
 		Args:          cobra.MinimumNArgs(1),
@@ -175,7 +176,10 @@ func newStackEnvUnsetCmd(o *stackEnvOpts) *cobra.Command {
 }
 
 func stackEnvWriteFlags(c *cobra.Command, o *stackEnvOpts) {
-	c.Flags().BoolVar(&o.noApply, "no-apply", false, "save the manifest without converging the stack")
+	c.Flags().BoolVar(&o.apply, "apply", false, "converge the stack right after saving")
+	// Saving without applying is now the default; the flag stays so existing scripts keep working.
+	c.Flags().BoolVar(&o.noApply, "no-apply", false, "")
+	_ = c.Flags().MarkDeprecated("no-apply", "saving without applying is now the default")
 	c.Flags().BoolVarP(&o.yes, "yes", "y", false, "skip the confirmation prompt")
 }
 
