@@ -211,6 +211,12 @@ miabi db databases shop                       # list
 miabi db databases create shop app_prod [--app web]   # optionally attach to an app
 miabi db databases connection shop app_prod   # reveal connection (admin)
 miabi db databases rm shop app_prod [--yes]
+# link to an app (injects DB_URL, DB_HOST, … ; Redis injects REDIS_*):
+miabi db link shop app_prod --app web [--prefix ANALYTICS]
+miabi db link shop app_prod --app web --env url=SPRING_DATASOURCE_URL --env database_url=
+miabi db link cache --app web                 # Redis: link the whole instance
+miabi db links --app web                      # what is linked, and the vars it injects
+miabi db unlink shop app_prod --app web
 ```
 
 ### Volumes
