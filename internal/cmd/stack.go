@@ -179,7 +179,7 @@ func newSetupCmd(use string) *cobra.Command {
 	f.BoolVar(&o.registry, "registry", false, "enable the built-in container registry")
 	f.StringVar(&o.registryHost, "registry-host", "", "registry hostname (default registry.<domain>); implies --registry")
 	f.BoolVar(&o.noHostProc, "no-host-proc", false, "do not bind the host's /proc into the control plane (host metrics fall back to the container's /proc)")
-	f.StringVar(&o.subnet, "subnet", "", "CIDR for the shared `miabi` network — apps and the gateway (default "+stack.DefaultSubnet+")")
+	f.StringVar(&o.subnet, "subnet", "", "CIDR for the shared `"+stack.DefaultNetwork+"` network — apps and the gateway (default "+stack.DefaultSubnet+")")
 	f.StringVar(&o.internalSubnet, "internal-subnet", "", "CIDR for the private `"+stack.DefaultInternalNetwork+"` network — control plane, database, cache (default "+stack.DefaultInternalSubnet+")")
 	f.StringVarP(&o.file, "file", "f", "", "manifest path (default "+stack.DefaultConfigPath+")")
 	f.BoolVarP(&o.yes, "yes", "y", false, "skip the confirmation prompt")
