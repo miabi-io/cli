@@ -30,7 +30,7 @@ func TestSettleDeploymentPollsWhenServerDidNotWait(t *testing.T) {
 	}
 
 	pending := &api.Deployment{ID: 5, Number: 3, Status: "pending"}
-	final, err := settleDeployment(context.Background(), c, "prod", 7, pending, time.Now().Add(time.Minute))
+	final, err := settleDeployment(context.Background(), c, "prod", "7", pending, time.Now().Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestSettleDeploymentPollsWhenServerDidNotWait(t *testing.T) {
 
 	settled := &api.Deployment{ID: 5, Number: 3, Status: api.StatusCanary}
 	polled = false
-	if got, err := settleDeployment(context.Background(), c, "prod", 7, settled, time.Now().Add(time.Minute)); err != nil || got != settled || polled {
+	if got, err := settleDeployment(context.Background(), c, "prod", "7", settled, time.Now().Add(time.Minute)); err != nil || got != settled || polled {
 		t.Errorf("a settled deployment must be used as-is: %v, %v, polled=%v", got, err, polled)
 	}
 }

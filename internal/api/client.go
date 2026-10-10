@@ -309,31 +309,14 @@ func (c *Client) Apps(ctx context.Context, ws string) ([]App, error) {
 	return apps, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps", ws), &apps)
 }
 
-func (c *Client) App(ctx context.Context, ws string, appID uint) (*App, error) {
+func (c *Client) App(ctx context.Context, ws string, app string) (*App, error) {
 	var a App
-	return &a, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d", ws, appID), &a)
+	return &a, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s", ws, url.PathEscape(app)), &a)
 }
 
 func (c *Client) CreateApp(ctx context.Context, ws string, req CreateAppRequest) (*App, error) {
 	var a App
 	return &a, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps", ws), req, &a)
-}
-
-// ResolveAppID turns an app handle (or numeric id) into the numeric id paths use.
-func (c *Client) ResolveAppID(ctx context.Context, ws string, ref string) (uint, error) {
-	if id, err := strconv.ParseUint(ref, 10, 64); err == nil {
-		return uint(id), nil
-	}
-	apps, err := c.Apps(ctx, ws)
-	if err != nil {
-		return 0, err
-	}
-	for _, a := range apps {
-		if a.Name == ref {
-			return a.ID, nil
-		}
-	}
-	return 0, fmt.Errorf("application %q not found in this workspace", ref)
 }
 
 //  deploy / rollback / releases
@@ -345,13 +328,13 @@ const MaxServerWait = 900 * time.Second
 // request until the deployment (or pipeline run) settles, up to MaxServerWait.
 // Servers that predate ?wait answer at once, so callers must still check the
 // status and poll when it is not settled.
-func (c *Client) Deploy(ctx context.Context, ws string, appID uint, req DeployRequest, wait time.Duration) (*DeployResult, error) {
-	return c.deployCall(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/deploy", ws, appID), req, wait)
+func (c *Client) Deploy(ctx context.Context, ws string, app string, req DeployRequest, wait time.Duration) (*DeployResult, error) {
+	return c.deployCall(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/deploy", ws, url.PathEscape(app)), req, wait)
 }
 
 // Rollback rolls back to a release. wait behaves as for Deploy.
-func (c *Client) Rollback(ctx context.Context, ws string, appID uint, req RollbackRequest, wait time.Duration) (*DeployResult, error) {
-	return c.deployCall(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/rollback", ws, appID), req, wait)
+func (c *Client) Rollback(ctx context.Context, ws string, app string, req RollbackRequest, wait time.Duration) (*DeployResult, error) {
+	return c.deployCall(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/rollback", ws, url.PathEscape(app)), req, wait)
 }
 
 func (c *Client) deployCall(ctx context.Context, path string, body any, wait time.Duration) (*DeployResult, error) {
@@ -398,8 +381,8 @@ func decodeDeployResult(raw json.RawMessage) (*DeployResult, error) {
 
 // InvalidateBuildCache names a new build cache generation for the app, so the next build (a deploy
 // or a pipeline run) rebuilds every layer and repopulates it.
-func (c *Client) InvalidateBuildCache(ctx context.Context, ws string, appID uint) error {
-	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/build-cache/invalidate", ws, appID), nil, nil)
+func (c *Client) InvalidateBuildCache(ctx context.Context, ws string, app string) error {
+	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/build-cache/invalidate", ws, url.PathEscape(app)), nil, nil)
 }
 
 // Pipelines lists the workspace's pipeline definitions.
@@ -421,49 +404,49 @@ func (c *Client) RerunPipelineRun(ctx context.Context, ws string, runID uint, re
 }
 
 // appAction posts to an app lifecycle sub-path (start|stop|restart).
-func (c *Client) appAction(ctx context.Context, ws string, appID uint, action string) error {
-	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/%s", ws, appID, action), nil, nil)
+func (c *Client) appAction(ctx context.Context, ws string, app string, action string) error {
+	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/%s", ws, url.PathEscape(app), action), nil, nil)
 }
 
-func (c *Client) StartApp(ctx context.Context, ws string, appID uint) error {
-	return c.appAction(ctx, ws, appID, "start")
+func (c *Client) StartApp(ctx context.Context, ws string, app string) error {
+	return c.appAction(ctx, ws, app, "start")
 }
-func (c *Client) StopApp(ctx context.Context, ws string, appID uint) error {
-	return c.appAction(ctx, ws, appID, "stop")
+func (c *Client) StopApp(ctx context.Context, ws string, app string) error {
+	return c.appAction(ctx, ws, app, "stop")
 }
-func (c *Client) RestartApp(ctx context.Context, ws string, appID uint) error {
-	return c.appAction(ctx, ws, appID, "restart")
+func (c *Client) RestartApp(ctx context.Context, ws string, app string) error {
+	return c.appAction(ctx, ws, app, "restart")
 }
 
 // SetAppSource replaces where an app's image comes from, including switching between a prebuilt
 // image and a Git build. It is a whole-source replacement: the server clears the fields belonging
 // to the source being left, so a partial request would leave the app describing both.
-func (c *Client) SetAppSource(ctx context.Context, ws string, appID uint, req SetAppSourceRequest) (*SetAppSourceResult, error) {
+func (c *Client) SetAppSource(ctx context.Context, ws string, app string, req SetAppSourceRequest) (*SetAppSourceResult, error) {
 	var r SetAppSourceResult
-	return &r, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/source", ws, appID), req, &r)
+	return &r, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/source", ws, url.PathEscape(app)), req, &r)
 }
 
 // ResyncAppPipeline reloads the repository's pipelines.yaml: adopting one when the app has none,
 // and re-syncing the stored spec when it already has one.
-func (c *Client) ResyncAppPipeline(ctx context.Context, ws string, appID uint) (*ResyncPipelineResult, error) {
+func (c *Client) ResyncAppPipeline(ctx context.Context, ws string, app string) (*ResyncPipelineResult, error) {
 	var r ResyncPipelineResult
-	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/pipeline/resync", ws, appID), nil, &r)
+	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/pipeline/resync", ws, url.PathEscape(app)), nil, &r)
 }
 
-func (c *Client) DeleteApp(ctx context.Context, ws string, appID uint) error {
-	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d", ws, appID), nil)
+func (c *Client) DeleteApp(ctx context.Context, ws string, app string) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s", ws, url.PathEscape(app)), nil)
 }
 
-func (c *Client) Deployments(ctx context.Context, ws string, appID uint) ([]Deployment, error) {
+func (c *Client) Deployments(ctx context.Context, ws string, app string) ([]Deployment, error) {
 	var deps []Deployment
-	return deps, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/deployments", ws, appID), &deps)
+	return deps, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/deployments", ws, url.PathEscape(app)), &deps)
 }
 
 // Deployment resolves a single deployment. Servers without the per-deployment
 // GET route answer 404 (or 405), and it is then found within the recent list.
-func (c *Client) Deployment(ctx context.Context, ws string, appID, depID uint) (*Deployment, error) {
+func (c *Client) Deployment(ctx context.Context, ws string, app string, depID uint) (*Deployment, error) {
 	var d Deployment
-	err := c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/deployments/%d", ws, appID, depID), &d)
+	err := c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/deployments/%d", ws, url.PathEscape(app), depID), &d)
 	if err == nil {
 		return &d, nil
 	}
@@ -471,7 +454,7 @@ func (c *Client) Deployment(ctx context.Context, ws string, appID, depID uint) (
 	if !errors.As(err, &ae) || (ae.StatusCode != http.StatusNotFound && ae.StatusCode != http.StatusMethodNotAllowed) {
 		return nil, err
 	}
-	deps, err := c.Deployments(ctx, ws, appID)
+	deps, err := c.Deployments(ctx, ws, app)
 	if err != nil {
 		return nil, err
 	}
@@ -485,8 +468,8 @@ func (c *Client) Deployment(ctx context.Context, ws string, appID, depID uint) (
 
 // DeploymentByNumber resolves a per-application deployment number (the value
 // users pass) to the full deployment, whose durable ID API paths address by.
-func (c *Client) DeploymentByNumber(ctx context.Context, ws string, appID uint, number int) (*Deployment, error) {
-	deps, err := c.Deployments(ctx, ws, appID)
+func (c *Client) DeploymentByNumber(ctx context.Context, ws string, app string, number int) (*Deployment, error) {
+	deps, err := c.Deployments(ctx, ws, app)
 	if err != nil {
 		return nil, err
 	}
@@ -500,8 +483,8 @@ func (c *Client) DeploymentByNumber(ctx context.Context, ws string, appID uint, 
 
 // ReleaseByVersion resolves a per-application release version to the full
 // release (the ID is what the rollback API expects).
-func (c *Client) ReleaseByVersion(ctx context.Context, ws string, appID uint, version int) (*Release, error) {
-	rels, err := c.Releases(ctx, ws, appID)
+func (c *Client) ReleaseByVersion(ctx context.Context, ws string, app string, version int) (*Release, error) {
+	rels, err := c.Releases(ctx, ws, app)
 	if err != nil {
 		return nil, err
 	}
@@ -513,9 +496,9 @@ func (c *Client) ReleaseByVersion(ctx context.Context, ws string, appID uint, ve
 	return nil, fmt.Errorf("release v%d not found for this app", version)
 }
 
-func (c *Client) Releases(ctx context.Context, ws string, appID uint) ([]Release, error) {
+func (c *Client) Releases(ctx context.Context, ws string, app string) ([]Release, error) {
 	var rs []Release
-	return rs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/releases", ws, appID), &rs)
+	return rs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/releases", ws, url.PathEscape(app)), &rs)
 }
 
 // --- databases -------------------------------------------------------------
@@ -594,29 +577,29 @@ func (c *Client) LogicalDatabases(ctx context.Context, ws string, id uint) ([]Lo
 }
 
 // AppDatabases lists the databases linked to an app.
-func (c *Client) AppDatabases(ctx context.Context, ws string, appID uint) ([]AppDatabase, error) {
+func (c *Client) AppDatabases(ctx context.Context, ws string, app string) ([]AppDatabase, error) {
 	var dbs []AppDatabase
-	return dbs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/databases", ws, appID), &dbs)
+	return dbs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/databases", ws, url.PathEscape(app)), &dbs)
 }
 
 // AttachDatabase links a logical database to an app and injects its connection.
-func (c *Client) AttachDatabase(ctx context.Context, ws string, appID, dbID uint, req LinkDatabaseRequest) (*LinkDatabaseResult, error) {
+func (c *Client) AttachDatabase(ctx context.Context, ws string, app string, dbID uint, req LinkDatabaseRequest) (*LinkDatabaseResult, error) {
 	var r LinkDatabaseResult
-	return &r, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/databases/%d", ws, appID, dbID), req, &r)
+	return &r, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/databases/%d", ws, url.PathEscape(app), dbID), req, &r)
 }
 
-func (c *Client) DetachDatabase(ctx context.Context, ws string, appID, dbID uint) error {
-	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/databases/%d", ws, appID, dbID), nil)
+func (c *Client) DetachDatabase(ctx context.Context, ws string, app string, dbID uint) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/databases/%d", ws, url.PathEscape(app), dbID), nil)
 }
 
 // LinkDatabaseInstance links a whole instance (Redis) to an app.
-func (c *Client) LinkDatabaseInstance(ctx context.Context, ws string, appID, instID uint, req LinkDatabaseRequest) (*LinkDatabaseResult, error) {
+func (c *Client) LinkDatabaseInstance(ctx context.Context, ws string, app string, instID uint, req LinkDatabaseRequest) (*LinkDatabaseResult, error) {
 	var r LinkDatabaseResult
-	return &r, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/database-instances/%d", ws, appID, instID), req, &r)
+	return &r, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/database-instances/%d", ws, url.PathEscape(app), instID), req, &r)
 }
 
-func (c *Client) UnlinkDatabaseInstance(ctx context.Context, ws string, appID, instID uint) error {
-	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/database-instances/%d", ws, appID, instID), nil)
+func (c *Client) UnlinkDatabaseInstance(ctx context.Context, ws string, app string, instID uint) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/database-instances/%d", ws, url.PathEscape(app), instID), nil)
 }
 
 func (c *Client) CreateLogicalDatabase(ctx context.Context, ws string, id uint, req CreateLogicalDatabaseRequest) (*CreateLogicalDatabaseResult, error) {
@@ -637,17 +620,17 @@ func (c *Client) DeleteLogicalDatabase(ctx context.Context, ws string, id, dbID 
 
 // EnvVars lists an application's environment variables. Secret values come back
 // masked — the API never returns them in plaintext.
-func (c *Client) EnvVars(ctx context.Context, ws string, appID uint) ([]EnvVar, error) {
+func (c *Client) EnvVars(ctx context.Context, ws string, app string) ([]EnvVar, error) {
 	var vars []EnvVar
-	return vars, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/env", ws, appID), &vars)
+	return vars, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/env", ws, url.PathEscape(app)), &vars)
 }
 
-func (c *Client) SetEnv(ctx context.Context, ws string, appID uint, req SetEnvRequest) error {
-	return c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/env", ws, appID), req, nil)
+func (c *Client) SetEnv(ctx context.Context, ws string, app string, req SetEnvRequest) error {
+	return c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/env", ws, url.PathEscape(app)), req, nil)
 }
 
-func (c *Client) ImportEnv(ctx context.Context, ws string, appID uint, req ImportEnvRequest) error {
-	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/env/import", ws, appID), req, nil)
+func (c *Client) ImportEnv(ctx context.Context, ws string, app string, req ImportEnvRequest) error {
+	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/env/import", ws, url.PathEscape(app)), req, nil)
 }
 
 // --- configs (workspace configuration files) -------------------------------
@@ -785,13 +768,13 @@ func (c *Client) ResolveVolumeID(ctx context.Context, ws, ref string) (uint, err
 
 // AttachVolume mounts a volume into an application at path. It flags the app as
 // needing a redeploy; it does not restart it.
-func (c *Client) AttachVolume(ctx context.Context, ws string, appID uint, req AttachVolumeRequest) error {
-	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/volumes", ws, appID), req, nil)
+func (c *Client) AttachVolume(ctx context.Context, ws string, app string, req AttachVolumeRequest) error {
+	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/volumes", ws, url.PathEscape(app)), req, nil)
 }
 
 // DetachVolume unmounts a volume from an application (the data is kept).
-func (c *Client) DetachVolume(ctx context.Context, ws string, appID, volumeID uint) error {
-	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/volumes/%d", ws, appID, volumeID), nil)
+func (c *Client) DetachVolume(ctx context.Context, ws string, app string, volumeID uint) error {
+	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/volumes/%d", ws, url.PathEscape(app), volumeID), nil)
 }
 
 // --- volume files ------------------------------------------------------------
@@ -1183,12 +1166,12 @@ var deployPollInterval = 2 * time.Second
 // WaitForDeploy polls a deployment until it settles (terminal, or a canary
 // awaiting promotion) or the context is cancelled/times out, calling onUpdate
 // (if non-nil) on each status change. It returns the final deployment.
-func (c *Client) WaitForDeploy(ctx context.Context, ws string, appID, depID uint, onUpdate func(status string)) (*Deployment, error) {
+func (c *Client) WaitForDeploy(ctx context.Context, ws string, app string, depID uint, onUpdate func(status string)) (*Deployment, error) {
 	ticker := time.NewTicker(deployPollInterval)
 	defer ticker.Stop()
 	last := ""
 	for {
-		d, err := c.Deployment(ctx, ws, appID, depID)
+		d, err := c.Deployment(ctx, ws, app, depID)
 		if err != nil {
 			return nil, err
 		}

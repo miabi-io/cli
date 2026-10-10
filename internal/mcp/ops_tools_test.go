@@ -81,6 +81,8 @@ func (f *fakePanel) handler(t *testing.T) http.HandlerFunc {
 			data = `{"id":1,"name":"prod"}`
 		case p == "/api/v1/workspaces/prod/apps":
 			data = `[{"id":7,"name":"web"}]`
+		case p == "/api/v1/workspaces/prod/apps/web":
+			data = `{"id":7,"name":"web"}`
 		case p == "/api/v1/workspaces/prod/alerts":
 			data = `[{"id":3,"category":"app","severity":"critical","state":"firing","title":"web is down","count":4,"subject_type":"app","subject_ref":"web"}]`
 		case p == "/api/v1/workspaces/prod/analytics/summary":

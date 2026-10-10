@@ -65,11 +65,7 @@ var useCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		id, err := c.ResolveAppID(ctx, ws, args[0])
-		if err != nil {
-			return err
-		}
-		app, err := c.App(ctx, ws, id)
+		app, err := c.App(ctx, ws, args[0])
 		if err != nil {
 			return err
 		}

@@ -56,9 +56,9 @@ var dbLinkCmd = &cobra.Command{
 		req := api.LinkDatabaseRequest{EnvPrefix: dbLinkPrefix, EnvMap: envMap}
 		var res *api.LinkDatabaseResult
 		if t.dbID == 0 {
-			res, err = t.c.LinkDatabaseInstance(ctx, t.ws, t.appID, t.instID, req)
+			res, err = t.c.LinkDatabaseInstance(ctx, t.ws, t.app, t.instID, req)
 		} else {
-			res, err = t.c.AttachDatabase(ctx, t.ws, t.appID, t.dbID, req)
+			res, err = t.c.AttachDatabase(ctx, t.ws, t.app, t.dbID, req)
 		}
 		if err != nil {
 			return err
@@ -86,9 +86,9 @@ var dbUnlinkCmd = &cobra.Command{
 			return err
 		}
 		if t.dbID == 0 {
-			err = t.c.UnlinkDatabaseInstance(ctx, t.ws, t.appID, t.instID)
+			err = t.c.UnlinkDatabaseInstance(ctx, t.ws, t.app, t.instID)
 		} else {
-			err = t.c.DetachDatabase(ctx, t.ws, t.appID, t.dbID)
+			err = t.c.DetachDatabase(ctx, t.ws, t.app, t.dbID)
 		}
 		if err != nil {
 			return err
@@ -112,11 +112,7 @@ var dbLinksCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, err := c.ResolveAppID(ctx, ws, dbLinkApp)
-		if err != nil {
-			return err
-		}
-		dbs, err := c.AppDatabases(ctx, ws, appID)
+		dbs, err := c.AppDatabases(ctx, ws, dbLinkApp)
 		if err != nil {
 			return err
 		}
@@ -139,7 +135,7 @@ var dbLinksCmd = &cobra.Command{
 type linkTarget struct {
 	c      *api.Client
 	ws     string
-	appID  uint
+	app    string
 	instID uint
 	dbID   uint // 0 for a whole-instance link
 	label  string
@@ -164,11 +160,7 @@ func resolveLinkTarget(ctx context.Context, args []string) (*linkTarget, error) 
 	if err != nil {
 		return nil, err
 	}
-	appID, err := c.ResolveAppID(ctx, ws, dbLinkApp)
-	if err != nil {
-		return nil, err
-	}
-	t := &linkTarget{c: c, ws: ws, appID: appID, instID: instID, label: inst.Name}
+	t := &linkTarget{c: c, ws: ws, app: dbLinkApp, instID: instID, label: inst.Name}
 	if inst.Engine == "redis" {
 		if len(args) > 1 {
 			return nil, fmt.Errorf("%s has no named databases; link the instance: miabi db link %s --app %s", inst.Engine, args[0], dbLinkApp)

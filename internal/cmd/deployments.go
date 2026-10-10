@@ -30,11 +30,11 @@ var deploymentsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, _, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
-		deps, err := c.Deployments(ctx, ws, appID)
+		deps, err := c.Deployments(ctx, ws, appRef)
 		if err != nil {
 			return err
 		}

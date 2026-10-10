@@ -27,11 +27,11 @@ var releasesCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, _, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
-		rels, err := c.Releases(ctx, ws, appID)
+		rels, err := c.Releases(ctx, ws, appRef)
 		if err != nil {
 			return err
 		}

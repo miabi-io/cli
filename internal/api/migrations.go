@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 )
 
@@ -86,19 +87,19 @@ type Migration struct {
 // person, or ended.
 func MigrationSettled(status string) bool { return status != "running" }
 
-func (c *Client) PlanMigration(ctx context.Context, ws string, appID uint, body StartMigration) (*MigrationPlan, error) {
+func (c *Client) PlanMigration(ctx context.Context, ws string, app string, body StartMigration) (*MigrationPlan, error) {
 	var p MigrationPlan
-	return &p, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/migrations/plan", ws, appID), body, &p)
+	return &p, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/migrations/plan", ws, url.PathEscape(app)), body, &p)
 }
 
-func (c *Client) StartMigration(ctx context.Context, ws string, appID uint, body StartMigration) (*Migration, error) {
+func (c *Client) StartMigration(ctx context.Context, ws string, app string, body StartMigration) (*Migration, error) {
 	var m Migration
-	return &m, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/migrations", ws, appID), body, &m)
+	return &m, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/migrations", ws, url.PathEscape(app)), body, &m)
 }
 
-func (c *Client) AppMigrations(ctx context.Context, ws string, appID uint) ([]Migration, error) {
+func (c *Client) AppMigrations(ctx context.Context, ws string, app string) ([]Migration, error) {
 	var out []Migration
-	return out, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/migrations", ws, appID), &out)
+	return out, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/migrations", ws, url.PathEscape(app)), &out)
 }
 
 func (c *Client) Migrations(ctx context.Context, ws string) ([]Migration, error) {

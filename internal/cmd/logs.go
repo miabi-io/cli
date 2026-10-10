@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	neturl "net/url"
 	"strings"
 
 	"github.com/miabi-io/cli/internal/api"
@@ -49,7 +50,7 @@ var logsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, _, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
@@ -57,17 +58,17 @@ var logsCmd = &cobra.Command{
 
 		// Deployment build/deploy logs — addressed by the per-app number.
 		if logsDeployment > 0 {
-			dep, err := c.DeploymentByNumber(ctx, ws, appID, logsDeployment)
+			dep, err := c.DeploymentByNumber(ctx, ws, appRef, logsDeployment)
 			if err != nil {
 				return err
 			}
-			url := fmt.Sprintf("%s/api/v1/workspaces/%s/apps/%d/deployments/%d/logs", base, ws, appID, dep.ID)
+			url := fmt.Sprintf("%s/api/v1/workspaces/%s/apps/%s/deployments/%d/logs", base, ws, neturl.PathEscape(appRef), dep.ID)
 			return streamDeployLogs(ctx, url, eff.Token)
 		}
 
 		// Runtime container logs (default).
 		follow := logsFollow
-		url := fmt.Sprintf("%s/api/v1/workspaces/%s/apps/%d/logs/stream?tail=%d&follow=%t", base, ws, appID, logsTail, follow)
+		url := fmt.Sprintf("%s/api/v1/workspaces/%s/apps/%s/logs/stream?tail=%d&follow=%t", base, ws, neturl.PathEscape(appRef), logsTail, follow)
 		return streamRuntimeLogs(ctx, url, eff.Token)
 	},
 }

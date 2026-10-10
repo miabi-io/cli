@@ -34,7 +34,7 @@ func TestDeploySendsWaitAndReadsTimeoutHeader(t *testing.T) {
 		w.Header().Set("X-Miabi-Wait", "timeout")
 		writeData(w, `{"id":5,"number":3,"status":"deploying"}`)
 	})
-	res, err := c.Deploy(context.Background(), "prod", 7, DeployRequest{}, 2*time.Hour)
+	res, err := c.Deploy(context.Background(), "prod", "7", DeployRequest{}, 2*time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestDeployWithoutWaitOmitsParam(t *testing.T) {
 		}
 		writeData(w, `{"id":5,"number":3,"status":"pending"}`)
 	})
-	res, err := c.Deploy(context.Background(), "prod", 7, DeployRequest{}, 0)
+	res, err := c.Deploy(context.Background(), "prod", "7", DeployRequest{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestDeployDecodesPipelineRun(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeData(w, `{"kind":"pipeline_run","run":{"id":40,"number":6,"status":"pending"}}`)
 	})
-	res, err := c.Deploy(context.Background(), "prod", 7, DeployRequest{}, 0)
+	res, err := c.Deploy(context.Background(), "prod", "7", DeployRequest{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestDeploymentUsesSingleGet(t *testing.T) {
 		}
 		writeData(w, `{"id":5,"number":3,"status":"canary"}`)
 	})
-	d, err := c.Deployment(context.Background(), "prod", 7, 5)
+	d, err := c.Deployment(context.Background(), "prod", "7", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestDeploymentFallsBackToListOnOlderServer(t *testing.T) {
 			t.Errorf("unexpected request %s", r.URL.Path)
 		}
 	})
-	d, err := c.Deployment(context.Background(), "prod", 7, 5)
+	d, err := c.Deployment(context.Background(), "prod", "7", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestWaitForDeployStopsAtCanary(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	d, err := c.WaitForDeploy(ctx, "prod", 7, 5, nil)
+	d, err := c.WaitForDeploy(ctx, "prod", "7", 5, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestScopeRefusalNamesTheRemedy(t *testing.T) {
 			w.WriteHeader(http.StatusForbidden)
 			_, _ = io.WriteString(w, `{"success":false,"error":{"status_code":403,"code":"FORBIDDEN","message":"API key missing required scope: `+tt.scope+`"}}`)
 		})
-		_, err := c.Deploy(context.Background(), "prod", 7, DeployRequest{}, 0)
+		_, err := c.Deploy(context.Background(), "prod", "7", DeployRequest{}, 0)
 		var se *ScopeError
 		if !errors.As(err, &se) || se.Scope != tt.scope {
 			t.Fatalf("want a ScopeError for %q, got %v", tt.scope, err)

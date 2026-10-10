@@ -173,11 +173,10 @@ func emit(v any) error {
 	return enc.Encode(v)
 }
 
-// resolveAppRef resolves the target application for an app-scoped command:
-// an explicit reference (the command's positional arg) wins, else the app bound
-// by `miabi use`, else a helpful error. It returns the numeric id API paths use
-// and the handle to display. ref is the handle or numeric id ("" to use the bound app).
-func resolveAppRef(ctx context.Context, c *api.Client, eff *config.Effective, ws, ref string) (uint, string, error) {
+// resolveAppRef picks the target application for an app-scoped command: an explicit reference (the
+// command's positional arg) wins, else the app bound by `miabi use`, else a helpful error. The server
+// resolves a name, uid or id in the path, so no request is needed here.
+func resolveAppRef(eff *config.Effective, ref string) (string, error) {
 	if ref == "" && eff.App != nil {
 		if eff.App.Name != "" {
 			ref = eff.App.Name
@@ -186,13 +185,9 @@ func resolveAppRef(ctx context.Context, c *api.Client, eff *config.Effective, ws
 		}
 	}
 	if ref == "" {
-		return 0, "", fmt.Errorf("no application specified — pass it as the first argument, or bind a default with `miabi use <app>`")
+		return "", fmt.Errorf("no application specified — pass it as the first argument, or bind a default with `miabi use <app>`")
 	}
-	id, err := c.ResolveAppID(ctx, ws, ref)
-	if err != nil {
-		return 0, "", err
-	}
-	return id, ref, nil
+	return ref, nil
 }
 
 // appArg pulls the optional leading app reference from a command's args: it

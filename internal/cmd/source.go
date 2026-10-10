@@ -67,7 +67,7 @@ var appSetSourceCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, appRef, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
@@ -75,7 +75,7 @@ var appSetSourceCmd = &cobra.Command{
 		// Confirm only a genuine switch: editing a tag or a branch is routine, changing what the
 		// app is built from is not, and it discards the other source's configuration.
 		if !srcYes && !structured() {
-			if app, aerr := c.App(ctx, ws, appID); aerr == nil && app.SourceType != "" && app.SourceType != req.SourceType {
+			if app, aerr := c.App(ctx, ws, appRef); aerr == nil && app.SourceType != "" && app.SourceType != req.SourceType {
 				to := "a Docker image"
 				lost := "its repository, branch and build settings"
 				if req.SourceType == "git" {
@@ -90,7 +90,7 @@ var appSetSourceCmd = &cobra.Command{
 			}
 		}
 
-		res, err := c.SetAppSource(ctx, ws, appID, req)
+		res, err := c.SetAppSource(ctx, ws, appRef, req)
 		if err != nil {
 			return err
 		}
@@ -173,11 +173,11 @@ var appResyncPipelineCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, appRef, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
-		res, err := c.ResyncAppPipeline(ctx, ws, appID)
+		res, err := c.ResyncAppPipeline(ctx, ws, appRef)
 		if err != nil {
 			return err
 		}

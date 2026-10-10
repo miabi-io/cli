@@ -51,7 +51,7 @@ var deployCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, appRef, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
@@ -63,7 +63,7 @@ var deployCmd = &cobra.Command{
 		}
 		var res *api.DeployResult
 		err = withSpinner(deployWait, fmt.Sprintf("Deploying %s", appRef), func() (err error) {
-			res, err = c.Deploy(ctx, ws, appID, api.DeployRequest{Tag: deployTag, Strategy: deployStrategy, NoCache: deployNoCache}, wait)
+			res, err = c.Deploy(ctx, ws, appRef, api.DeployRequest{Tag: deployTag, Strategy: deployStrategy, NoCache: deployNoCache}, wait)
 			return err
 		})
 		if err != nil {
@@ -81,7 +81,7 @@ var deployCmd = &cobra.Command{
 			ui.Info("Follow it: miabi apps logs %s --deployment %d", appRef, dep.Number)
 			return nil
 		}
-		final, err := settleDeployment(ctx, c, ws, appID, dep, deadline)
+		final, err := settleDeployment(ctx, c, ws, appRef, dep, deadline)
 		if err != nil {
 			return err
 		}
@@ -92,7 +92,7 @@ var deployCmd = &cobra.Command{
 // settleDeployment returns dep once it is settled. A server that honoured ?wait
 // usually hands it back settled already; an older one, or one whose wait ran out
 // before our own deadline, is polled for the rest of the time.
-func settleDeployment(ctx context.Context, c *api.Client, ws string, appID uint, dep *api.Deployment, deadline time.Time) (*api.Deployment, error) {
+func settleDeployment(ctx context.Context, c *api.Client, ws string, appRef string, dep *api.Deployment, deadline time.Time) (*api.Deployment, error) {
 	if api.IsSettled(dep.Status) {
 		return dep, nil
 	}
@@ -101,7 +101,7 @@ func settleDeployment(ctx context.Context, c *api.Client, ws string, appID uint,
 
 	sp := ui.NewSpinner(fmt.Sprintf("Deployment #%d: %s", dep.Number, dep.Status))
 	sp.Start()
-	final, err := c.WaitForDeploy(wctx, ws, appID, dep.ID, func(status string) {
+	final, err := c.WaitForDeploy(wctx, ws, appRef, dep.ID, func(status string) {
 		sp.Update(fmt.Sprintf("Deployment #%d: %s", dep.Number, status))
 	})
 	sp.Stop()

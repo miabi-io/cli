@@ -471,14 +471,13 @@ when the agent doesn't name one.
 
 ## Notes on the current API
 
-A few server capabilities the long‑term design assumes are not yet in the panel; the
-CLI adapts client‑side so it works against today's API:
-
-- **`current` addressing** isn't in the URL scheme yet; the CLI addresses a
-  workspace by its **name** in the URL and resolves an **app slug → numeric id**
-  before each call.
-- **Server‑side `wait`** isn't available, so `--wait` **polls** the deployment status
-  until it is terminal.
+- **Addressing**: workspaces and apps can be addressed by name, uid or numeric id
+  in the URL; there is no `current` keyword yet, so the CLI fills in the active
+  workspace itself.
+- **`--wait`** asks the server to hold the request until the deployment settles
+  (`?wait=`, capped at 15 minutes server-side), and polls only when an older server
+  or an expired wait hands it back unsettled. It exits non-zero when the deployment
+  fails or `--timeout` (default 10 minutes) passes.
 - **`--image`** override and an **`Idempotency‑Key`** for retry‑safe deploys depend on
   upcoming machine‑API work; `--tag` (the common CI flow) is supported today.
 

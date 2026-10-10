@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/miabi-io/cli/internal/api"
 	"github.com/miabi-io/cli/internal/config"
@@ -75,11 +76,11 @@ var appInvalidateCacheCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, appRef, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
-		if err := c.InvalidateBuildCache(ctx, ws, appID); err != nil {
+		if err := c.InvalidateBuildCache(ctx, ws, appRef); err != nil {
 			return err
 		}
 		ui.Success("Build cache of %s invalidated — the next build rebuilds every layer", ui.Bold(appRef))
@@ -174,14 +175,14 @@ var appRmCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, appRef, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
 		if !appRmYes && !structured() {
 			prompt := fmt.Sprintf("Delete application %s and all its releases? This cannot be undone.", ui.Bold(appRef))
 
-			if app, aerr := c.App(ctx, ws, appID); aerr == nil && app.Status == "running" {
+			if app, aerr := c.App(ctx, ws, appRef); aerr == nil && app.Status == "running" {
 				prompt = fmt.Sprintf("Application %s is currently running. Deleting it stops and removes its container and all releases. This cannot be undone.\nDelete it?", ui.Bold(appRef))
 			}
 			if !ui.Confirm(prompt) {
@@ -189,13 +190,13 @@ var appRmCmd = &cobra.Command{
 				return nil
 			}
 		}
-		if err := c.DeleteApp(ctx, ws, appID); err != nil {
+		if err := c.DeleteApp(ctx, ws, appRef); err != nil {
 			return err
 		}
 		// Clear the bound app if we just deleted it, so later commands don't
 		// resolve a dangling reference.
 		if f, ferr := config.Load(); ferr == nil {
-			if cur := f.CurrentContext(); cur != nil && cur.App != nil && cur.App.ID == appID {
+			if cur := f.CurrentContext(); cur != nil && cur.App != nil && (cur.App.Name == appRef || strconv.FormatUint(uint64(cur.App.ID), 10) == appRef) {
 				cur.App = nil
 				_ = config.Save(f)
 			}
