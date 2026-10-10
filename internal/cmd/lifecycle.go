@@ -11,7 +11,7 @@ import (
 // appLifecycleCmd builds an `apps <action> [app]` subcommand (action before the
 // name, like `apps create`). The app is positional or the one bound by
 // `miabi use`; it tab-completes app handles.
-func appLifecycleCmd(use, short, done string, fn func(*api.Client, context.Context, string, uint) error) *cobra.Command {
+func appLifecycleCmd(use, short, done string, fn func(*api.Client, context.Context, string, string) error) *cobra.Command {
 	return &cobra.Command{
 		Use:               use + " [app]",
 		Short:             short,
@@ -27,11 +27,11 @@ func appLifecycleCmd(use, short, done string, fn func(*api.Client, context.Conte
 			if err != nil {
 				return err
 			}
-			appID, appRef, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+			appRef, err := resolveAppRef(eff, appArg(args))
 			if err != nil {
 				return err
 			}
-			if err := fn(c, ctx, ws, appID); err != nil {
+			if err := fn(c, ctx, ws, appRef); err != nil {
 				return err
 			}
 			ui.Success("%s %s", done, ui.Bold(appRef))
@@ -42,9 +42,9 @@ func appLifecycleCmd(use, short, done string, fn func(*api.Client, context.Conte
 
 var (
 	appStartCmd = appLifecycleCmd("start", "Start an application's container", "Started",
-		func(c *api.Client, ctx context.Context, ws string, id uint) error { return c.StartApp(ctx, ws, id) })
+		func(c *api.Client, ctx context.Context, ws, app string) error { return c.StartApp(ctx, ws, app) })
 	appStopCmd = appLifecycleCmd("stop", "Stop an application's container", "Stopped",
-		func(c *api.Client, ctx context.Context, ws string, id uint) error { return c.StopApp(ctx, ws, id) })
+		func(c *api.Client, ctx context.Context, ws, app string) error { return c.StopApp(ctx, ws, app) })
 	appRestartCmd = appLifecycleCmd("restart", "Restart an application's container", "Restarting",
-		func(c *api.Client, ctx context.Context, ws string, id uint) error { return c.RestartApp(ctx, ws, id) })
+		func(c *api.Client, ctx context.Context, ws, app string) error { return c.RestartApp(ctx, ws, app) })
 )

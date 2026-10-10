@@ -104,11 +104,11 @@ func (s *Server) registerTools() {
 		},
 		readOnly: true,
 		handler: func(ctx context.Context, s *Server, args map[string]any) (any, error) {
-			ws, appID, err := s.resolveApp(ctx, args)
+			ws, app, err := s.resolveApp(ctx, args)
 			if err != nil {
 				return nil, err
 			}
-			return s.client.App(ctx, ws, appID)
+			return s.client.App(ctx, ws, app)
 		},
 	})
 	s.register(tool{
@@ -120,11 +120,11 @@ func (s *Server) registerTools() {
 		readOnly: true,
 		handler: func(ctx context.Context, s *Server, args map[string]any) (any, error) {
 			if a, _ := args["app"].(string); a != "" {
-				ws, appID, err := s.resolveApp(ctx, args)
+				ws, app, err := s.resolveApp(ctx, args)
 				if err != nil {
 					return nil, err
 				}
-				return s.client.AppMigrations(ctx, ws, appID)
+				return s.client.AppMigrations(ctx, ws, app)
 			}
 			ws, err := s.resolveWS(ctx, args)
 			if err != nil {
@@ -160,11 +160,11 @@ func (s *Server) registerTools() {
 		},
 		readOnly: true,
 		handler: func(ctx context.Context, s *Server, args map[string]any) (any, error) {
-			ws, appID, err := s.resolveApp(ctx, args)
+			ws, app, err := s.resolveApp(ctx, args)
 			if err != nil {
 				return nil, err
 			}
-			return s.client.Deployments(ctx, ws, appID)
+			return s.client.Deployments(ctx, ws, app)
 		},
 	})
 	s.register(tool{
@@ -179,7 +179,7 @@ func (s *Server) registerTools() {
 		},
 		readOnly: true,
 		handler: func(ctx context.Context, s *Server, args map[string]any) (any, error) {
-			ws, appID, err := s.resolveApp(ctx, args)
+			ws, app, err := s.resolveApp(ctx, args)
 			if err != nil {
 				return nil, err
 			}
@@ -187,7 +187,7 @@ func (s *Server) registerTools() {
 			if err != nil {
 				return nil, err
 			}
-			return s.client.DeploymentByNumber(ctx, ws, appID, n)
+			return s.client.DeploymentByNumber(ctx, ws, app, n)
 		},
 	})
 	s.register(tool{
@@ -198,11 +198,11 @@ func (s *Server) registerTools() {
 		},
 		readOnly: true,
 		handler: func(ctx context.Context, s *Server, args map[string]any) (any, error) {
-			ws, appID, err := s.resolveApp(ctx, args)
+			ws, app, err := s.resolveApp(ctx, args)
 			if err != nil {
 				return nil, err
 			}
-			return s.client.Releases(ctx, ws, appID)
+			return s.client.Releases(ctx, ws, app)
 		},
 	})
 
@@ -276,11 +276,11 @@ func (s *Server) registerTools() {
 			Annotations: &toolAnnotations{Title: "Deploy application"},
 		},
 		handler: func(ctx context.Context, s *Server, args map[string]any) (any, error) {
-			ws, appID, err := s.resolveApp(ctx, args)
+			ws, app, err := s.resolveApp(ctx, args)
 			if err != nil {
 				return nil, err
 			}
-			res, err := s.client.Deploy(ctx, ws, appID, api.DeployRequest{Tag: optString(args, "tag")}, 0)
+			res, err := s.client.Deploy(ctx, ws, app, api.DeployRequest{Tag: optString(args, "tag")}, 0)
 			if err != nil {
 				return nil, err
 			}
@@ -302,7 +302,7 @@ func (s *Server) registerTools() {
 			Annotations: &toolAnnotations{Title: "Roll back application", DestructiveHint: true},
 		},
 		handler: func(ctx context.Context, s *Server, args map[string]any) (any, error) {
-			ws, appID, err := s.resolveApp(ctx, args)
+			ws, app, err := s.resolveApp(ctx, args)
 			if err != nil {
 				return nil, err
 			}
@@ -310,7 +310,7 @@ func (s *Server) registerTools() {
 			if err != nil {
 				return nil, err
 			}
-			res, err := s.client.Rollback(ctx, ws, appID, api.RollbackRequest{ReleaseID: uint(rid)}, 0)
+			res, err := s.client.Rollback(ctx, ws, app, api.RollbackRequest{ReleaseID: uint(rid)}, 0)
 			if err != nil {
 				return nil, err
 			}
@@ -333,7 +333,7 @@ func deployPayload(res *api.DeployResult) any {
 // registerAction registers a mutating app-lifecycle tool whose handler is one of
 // the client's action methods (Start/Stop/RestartApp). destructive tags the tool
 // so clients prompt before calling it.
-func (s *Server) registerAction(name, desc string, destructive bool, fn func(*api.Client, context.Context, string, uint) error) {
+func (s *Server) registerAction(name, desc string, destructive bool, fn func(*api.Client, context.Context, string, string) error) {
 	s.register(tool{
 		def: toolDef{
 			Name:        name,
@@ -342,14 +342,14 @@ func (s *Server) registerAction(name, desc string, destructive bool, fn func(*ap
 			Annotations: &toolAnnotations{DestructiveHint: destructive},
 		},
 		handler: func(ctx context.Context, s *Server, args map[string]any) (any, error) {
-			ws, appID, err := s.resolveApp(ctx, args)
+			ws, app, err := s.resolveApp(ctx, args)
 			if err != nil {
 				return nil, err
 			}
-			if err := fn(s.client, ctx, ws, appID); err != nil {
+			if err := fn(s.client, ctx, ws, app); err != nil {
 				return nil, err
 			}
-			return map[string]any{"ok": true, "app_id": appID}, nil
+			return map[string]any{"ok": true, "app": app}, nil
 		},
 	})
 }
@@ -360,22 +360,18 @@ func (s *Server) resolveWS(ctx context.Context, args map[string]any) (string, er
 	return s.client.ResolveWorkspaceName(ctx, optString(args, "workspace"), s.fallbackWS)
 }
 
-// resolveApp resolves both the workspace and the numeric app id for an
-// app-scoped tool call.
-func (s *Server) resolveApp(ctx context.Context, args map[string]any) (string, uint, error) {
+// resolveApp resolves the workspace and reads the app reference for an app-scoped tool call. The server
+// resolves the reference (name, uid or id) in the path.
+func (s *Server) resolveApp(ctx context.Context, args map[string]any) (string, string, error) {
 	ws, err := s.resolveWS(ctx, args)
 	if err != nil {
-		return "", 0, err
+		return "", "", err
 	}
 	ref, err := argString(args, "app")
 	if err != nil {
-		return "", 0, err
+		return "", "", err
 	}
-	id, err := s.client.ResolveAppID(ctx, ws, ref)
-	if err != nil {
-		return "", 0, err
-	}
-	return ws, id, nil
+	return ws, ref, nil
 }
 
 // optString returns a string argument, or "" if absent.

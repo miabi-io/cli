@@ -56,8 +56,8 @@ func (c *Client) WorkspaceEvents(ctx context.Context, ws string, limit int) ([]E
 }
 
 // AppEvents returns an application's newest events.
-func (c *Client) AppEvents(ctx context.Context, ws string, appID uint, limit int) ([]Event, error) {
-	path := fmt.Sprintf("/api/v1/workspaces/%s/apps/%d/events", ws, appID)
+func (c *Client) AppEvents(ctx context.Context, ws string, app string, limit int) ([]Event, error) {
+	path := fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/events", ws, url.PathEscape(app))
 	if limit > 0 {
 		path += "?limit=" + strconv.Itoa(limit)
 	}

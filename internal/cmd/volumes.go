@@ -310,11 +310,11 @@ var volAttachCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, appRef, err := resolveAppRef(ctx, c, eff, ws, volApp)
+		appRef, err := resolveAppRef(eff, volApp)
 		if err != nil {
 			return err
 		}
-		if err := c.AttachVolume(ctx, ws, appID, api.AttachVolumeRequest{VolumeID: volID, Path: volPath}); err != nil {
+		if err := c.AttachVolume(ctx, ws, appRef, api.AttachVolumeRequest{VolumeID: volID, Path: volPath}); err != nil {
 			return err
 		}
 		ui.Success("Mounted %s at %s in %s", ui.Bold(args[0]), volPath, ui.Bold(appRef))
@@ -342,11 +342,11 @@ var volDetachCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, appRef, err := resolveAppRef(ctx, c, eff, ws, volApp)
+		appRef, err := resolveAppRef(eff, volApp)
 		if err != nil {
 			return err
 		}
-		if err := c.DetachVolume(ctx, ws, appID, volID); err != nil {
+		if err := c.DetachVolume(ctx, ws, appRef, volID); err != nil {
 			return err
 		}
 		ui.Success("Unmounted %s from %s", ui.Bold(args[0]), ui.Bold(appRef))

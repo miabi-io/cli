@@ -399,11 +399,12 @@ var dbCreateLogicalCmd = &cobra.Command{
 		}
 		var appID *uint
 		if dbLogicalApp != "" {
-			aid, aerr := c.ResolveAppID(ctx, ws, dbLogicalApp)
+			// The request body takes the numeric id.
+			app, aerr := c.App(ctx, ws, dbLogicalApp)
 			if aerr != nil {
 				return aerr
 			}
-			appID = &aid
+			appID = &app.ID
 		}
 		res, err := c.CreateLogicalDatabase(ctx, ws, id, api.CreateLogicalDatabaseRequest{Name: args[1], ApplicationID: appID})
 		if err != nil {

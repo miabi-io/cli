@@ -122,16 +122,11 @@ func (s *Server) handleResourceRead(ctx context.Context, raw json.RawMessage) (*
 	if err != nil {
 		return nil, &rpcError{Code: codeInternal, Message: err.Error()}
 	}
-	appID, err := s.client.ResolveAppID(ctx, ws, u.app)
-	if err != nil {
-		return nil, &rpcError{Code: codeInternal, Message: err.Error()}
-	}
-
 	var payload any
 	if u.isDeploy {
-		payload, err = s.client.DeploymentByNumber(ctx, ws, appID, u.deployment)
+		payload, err = s.client.DeploymentByNumber(ctx, ws, u.app, u.deployment)
 	} else {
-		payload, err = s.client.App(ctx, ws, appID)
+		payload, err = s.client.App(ctx, ws, u.app)
 	}
 	if err != nil {
 		return nil, &rpcError{Code: codeInternal, Message: err.Error()}

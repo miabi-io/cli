@@ -69,12 +69,12 @@ var appMigrateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, appRef, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
 		body := api.StartMigration{Location: migLocation, CutoverMode: migCutover, BandwidthKBps: migBandwidth * 1024}
-		plan, err := c.PlanMigration(ctx, ws, appID, body)
+		plan, err := c.PlanMigration(ctx, ws, appRef, body)
 		if err != nil {
 			return err
 		}
@@ -82,7 +82,7 @@ var appMigrateCmd = &cobra.Command{
 			if body.Databases, err = parseDBChoices(migDBs, plan); err != nil {
 				return err
 			}
-			if plan, err = c.PlanMigration(ctx, ws, appID, body); err != nil {
+			if plan, err = c.PlanMigration(ctx, ws, appRef, body); err != nil {
 				return err
 			}
 		}
@@ -100,7 +100,7 @@ var appMigrateCmd = &cobra.Command{
 			ui.Info("Aborted.")
 			return nil
 		}
-		m, err := c.StartMigration(ctx, ws, appID, body)
+		m, err := c.StartMigration(ctx, ws, appRef, body)
 		if err != nil {
 			return err
 		}
@@ -251,11 +251,11 @@ var migrationsCmd = &cobra.Command{
 		}
 		var list []api.Migration
 		if len(args) == 1 {
-			appID, _, rerr := resolveAppRef(ctx, c, eff, ws, args[0])
+			appRef, rerr := resolveAppRef(eff, args[0])
 			if rerr != nil {
 				return rerr
 			}
-			list, err = c.AppMigrations(ctx, ws, appID)
+			list, err = c.AppMigrations(ctx, ws, appRef)
 		} else {
 			list, err = c.Migrations(ctx, ws)
 		}

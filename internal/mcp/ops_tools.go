@@ -81,11 +81,11 @@ func (s *Server) registerOpsTools() {
 				}
 				return s.client.WorkspaceEvents(ctx, ws, limit)
 			}
-			ws, appID, err := s.resolveApp(ctx, args)
+			ws, app, err := s.resolveApp(ctx, args)
 			if err != nil {
 				return nil, err
 			}
-			return s.client.AppEvents(ctx, ws, appID, min(max(limit, 1), api.MaxEventPage))
+			return s.client.AppEvents(ctx, ws, app, min(max(limit, 1), api.MaxEventPage))
 		},
 	})
 	s.register(tool{
@@ -100,10 +100,16 @@ func (s *Server) registerOpsTools() {
 		},
 		readOnly: true,
 		handler: func(ctx context.Context, s *Server, args map[string]any) (any, error) {
-			ws, appID, err := s.resolveApp(ctx, args)
+			ws, ref, err := s.resolveApp(ctx, args)
 			if err != nil {
 				return nil, err
 			}
+			// The analytics filter takes the numeric id.
+			app, err := s.client.App(ctx, ws, ref)
+			if err != nil {
+				return nil, err
+			}
+			appID := app.ID
 			rng := optString(args, "range")
 			if rng == "" {
 				rng = "1h"

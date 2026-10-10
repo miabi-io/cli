@@ -48,7 +48,7 @@ func TestNoPayloadCallRejectsHTMLResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.StopApp(context.Background(), "ws", 1); err == nil {
+	if err := c.StopApp(context.Background(), "ws", "1"); err == nil {
 		t.Fatal("expected an error for an HTML response")
 	}
 }
@@ -101,7 +101,7 @@ func TestNoPayloadCallSurfacesAPIError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = c.StopApp(context.Background(), "ws", 1)
+	err = c.StopApp(context.Background(), "ws", "1")
 	if err == nil || !strings.Contains(err.Error(), "forbidden: not allowed") {
 		t.Fatalf("error = %v, want the API's forbidden error", err)
 	}
@@ -118,7 +118,7 @@ func TestEmptyBodyFailureIsAnError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.StopApp(context.Background(), "ws", 1); err == nil || !strings.Contains(err.Error(), "HTTP 502") {
+	if err := c.StopApp(context.Background(), "ws", "1"); err == nil || !strings.Contains(err.Error(), "HTTP 502") {
 		t.Fatalf("error = %v, want HTTP 502", err)
 	}
 }

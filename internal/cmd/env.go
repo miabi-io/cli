@@ -65,11 +65,11 @@ var envLsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, appRef, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
-		vars, err := c.EnvVars(ctx, ws, appID)
+		vars, err := c.EnvVars(ctx, ws, appRef)
 		if err != nil {
 			return err
 		}
@@ -140,11 +140,11 @@ var envSetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, _, err := resolveAppRef(ctx, c, eff, ws, appRefArg)
+		appRef, err := resolveAppRef(eff, appRefArg)
 		if err != nil {
 			return err
 		}
-		if err := c.SetEnv(ctx, ws, appID, api.SetEnvRequest{Key: key, Value: value, IsSecret: envSecret}); err != nil {
+		if err := c.SetEnv(ctx, ws, appRef, api.SetEnvRequest{Key: key, Value: value, IsSecret: envSecret}); err != nil {
 			return err
 		}
 		ui.Success("Set %s %s", ui.Bold(key), ui.Dim("(redeploy to apply)"))
@@ -173,11 +173,11 @@ var envImportCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, _, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
-		if err := c.ImportEnv(ctx, ws, appID, api.ImportEnvRequest{Content: content, IsSecret: envSecret}); err != nil {
+		if err := c.ImportEnv(ctx, ws, appRef, api.ImportEnvRequest{Content: content, IsSecret: envSecret}); err != nil {
 			return err
 		}
 		ui.Success("Imported env from %s %s", envFile, ui.Dim("(redeploy to apply)"))

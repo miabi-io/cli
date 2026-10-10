@@ -47,7 +47,7 @@ var rollbackCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, appRef, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
@@ -56,7 +56,7 @@ var rollbackCmd = &cobra.Command{
 		var targetID uint
 		var targetVersion int
 		if rollbackToPrevious {
-			rels, err := c.Releases(ctx, ws, appID)
+			rels, err := c.Releases(ctx, ws, appRef)
 			if err != nil {
 				return err
 			}
@@ -72,7 +72,7 @@ var rollbackCmd = &cobra.Command{
 				return fmt.Errorf("no previous release to roll back to")
 			}
 		} else {
-			rel, err := c.ReleaseByVersion(ctx, ws, appID, rollbackTo)
+			rel, err := c.ReleaseByVersion(ctx, ws, appRef, rollbackTo)
 			if err != nil {
 				return err
 			}
@@ -93,7 +93,7 @@ var rollbackCmd = &cobra.Command{
 		}
 		var res *api.DeployResult
 		err = withSpinner(rollbackWait, fmt.Sprintf("Rolling %s back to v%d", appRef, targetVersion), func() (err error) {
-			res, err = c.Rollback(ctx, ws, appID, api.RollbackRequest{ReleaseID: targetID}, wait)
+			res, err = c.Rollback(ctx, ws, appRef, api.RollbackRequest{ReleaseID: targetID}, wait)
 			return err
 		})
 		if err != nil {
@@ -110,7 +110,7 @@ var rollbackCmd = &cobra.Command{
 			ui.Success("Rolling %s back to v%d (deployment #%d, %s)", ui.Bold(appRef), targetVersion, dep.Number, ui.Status(dep.Status))
 			return nil
 		}
-		final, err := settleDeployment(ctx, c, ws, appID, dep, deadline)
+		final, err := settleDeployment(ctx, c, ws, appRef, dep, deadline)
 		if err != nil {
 			return err
 		}

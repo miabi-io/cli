@@ -30,13 +30,13 @@ var statusCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		appID, appRef, err := resolveAppRef(ctx, c, eff, ws, appArg(args))
+		appRef, err := resolveAppRef(eff, appArg(args))
 		if err != nil {
 			return err
 		}
 
 		if statusDeployment != 0 {
-			dep, err := c.DeploymentByNumber(ctx, ws, appID, statusDeployment)
+			dep, err := c.DeploymentByNumber(ctx, ws, appRef, statusDeployment)
 			if err != nil {
 				return err
 			}
@@ -53,7 +53,7 @@ var statusCmd = &cobra.Command{
 			return nil
 		}
 
-		app, err := c.App(ctx, ws, appID)
+		app, err := c.App(ctx, ws, appRef)
 		if err != nil {
 			return err
 		}
