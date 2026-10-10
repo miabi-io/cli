@@ -47,7 +47,8 @@ var secretCmd = &cobra.Command{
 		"  miabi secrets set STRIPE_KEY --from-file key.txt\n" +
 		"  cat key.txt | miabi secrets set STRIPE_KEY --from-file -\n" +
 		"  miabi secrets reveal STRIPE_KEY\n" +
-		"  miabi secrets rm STRIPE_KEY",
+		"  miabi secrets rm STRIPE_KEY\n" +
+		"  echo -n \"$STRIPE_KEY\" | miabi secrets seal STRIPE_KEY >> secrets.yaml",
 }
 
 var secretLsCmd = &cobra.Command{
@@ -125,6 +126,9 @@ var secretGetCmd = &cobra.Command{
 		ui.Detail("Version:     v%d", s.Version)
 		if s.Managed {
 			ui.Detail("Managed:     yes %s", ui.Dim("(owned by a platform resource — rotate via its owner)"))
+		}
+		if s.SealedKeyVersion > 0 {
+			ui.Detail("Sealed:      yes %s", ui.Dim(fmt.Sprintf("(set from a sealed value in git, key v%d — a value set here is replaced at the next apply)", s.SealedKeyVersion)))
 		}
 		ui.Detail("Created:     %s", fmtTimestamp(s.CreatedAt))
 		ui.Detail("Updated:     %s", fmtTimestamp(s.UpdatedAt))

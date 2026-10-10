@@ -350,6 +350,22 @@ miabi secrets usage API_KEY                   # apps referencing it
 miabi secrets rm API_KEY [--yes]
 ```
 
+#### Sealed secrets
+
+`seal` encrypts a value to the workspace's public sealing key and prints a
+`kind: SealedSecret` manifest, safe to commit. Encryption is local; only this
+workspace can open the value, and only for a SealedSecret of the same name.
+`miabi apply` and GitOps open it on the server and store it in the vault, where
+apps reference it as `${{ secrets.NAME }}`.
+
+```
+echo -n "$API_KEY" | miabi secrets seal API_KEY >> secrets.yaml
+miabi secrets seal API_KEY --from-file api.key --raw    # just the sealed value
+miabi secrets seal-key > .miabi/sealing.pub             # public key, safe to commit
+miabi secrets seal API_KEY --from-file api.key --public-key-file .miabi/sealing.pub   # offline, e.g. in CI
+miabi secrets seal -f secrets.yaml --in-place           # turn every plaintext Secret into a SealedSecret
+```
+
 `[web]` is optional when an app is bound with `miabi use`. Deployments and
 releases are addressed by their **per-app number/version** (the `NUMBER` /
 `VERSION` columns), not the global platform id. Shell completion (`miabi
