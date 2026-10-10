@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"text/tabwriter"
 
@@ -20,7 +23,7 @@ var (
 
 func init() {
 	f := applyCmd.Flags()
-	f.StringArrayVarP(&applyFiles, "file", "f", nil, "manifest file(s); repeat for several, or '-' for stdin (required)")
+	f.StringArrayVarP(&applyFiles, "file", "f", nil, "manifest file or directory; repeat for several, or '-' for stdin (required)")
 	f.BoolVar(&applyPrune, "prune", false, "delete managed resources absent from the bundle")
 	f.BoolVar(&applyDryRun, "dry-run", false, "show the plan without applying")
 	_ = applyCmd.MarkFlagRequired("file")
@@ -85,25 +88,72 @@ var applyCmd = &cobra.Command{
 }
 
 // readManifests concatenates the given files into one multi-document bundle,
-// separating them with the YAML document marker. "-" reads stdin.
+// separating them with the YAML document marker. "-" reads stdin, and a
+// directory reads every .yaml and .yml file under it, as a Git source does.
 func readManifests(files []string) (string, error) {
 	var docs []string
+	add := func(data []byte) {
+		if doc := strings.TrimSpace(string(data)); doc != "" {
+			docs = append(docs, doc)
+		}
+	}
 	for _, name := range files {
-		var (
-			data []byte
-			err  error
-		)
 		if name == "-" {
-			data, err = io.ReadAll(os.Stdin)
-		} else {
-			data, err = os.ReadFile(name)
+			data, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				return "", fmt.Errorf("read stdin: %w", err)
+			}
+			add(data)
+			continue
 		}
+		paths, err := manifestPaths(name)
 		if err != nil {
-			return "", fmt.Errorf("read %s: %w", name, err)
+			return "", err
 		}
-		docs = append(docs, strings.TrimSpace(string(data)))
+		for _, p := range paths {
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return "", fmt.Errorf("read %s: %w", p, err)
+			}
+			add(data)
+		}
 	}
 	return strings.Join(docs, "\n---\n"), nil
+}
+
+// manifestPaths expands name to the files it stands for: itself, or for a
+// directory every .yaml and .yml file under it in path order, the same files a
+// Git source pointed at that directory reads.
+func manifestPaths(name string) ([]string, error) {
+	info, err := os.Stat(name)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", name, err)
+	}
+	if !info.IsDir() {
+		return []string{name}, nil
+	}
+	var paths []string
+	err = filepath.WalkDir(name, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		switch strings.ToLower(filepath.Ext(p)) {
+		case ".yaml", ".yml":
+			paths = append(paths, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", name, err)
+	}
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("%s: no .yaml or .yml files in the directory", name)
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 // printChanges renders a plan as a table, skipping no-op entries.

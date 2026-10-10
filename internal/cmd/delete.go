@@ -15,7 +15,7 @@ var (
 
 func init() {
 	f := deleteCmd.Flags()
-	f.StringArrayVarP(&deleteFiles, "file", "f", nil, "manifest file(s); repeat for several, or '-' for stdin (required)")
+	f.StringArrayVarP(&deleteFiles, "file", "f", nil, "manifest file or directory; repeat for several, or '-' for stdin (required)")
 	f.BoolVar(&deleteDryRun, "dry-run", false, "show what would be deleted without deleting")
 	_ = deleteCmd.MarkFlagRequired("file")
 	rootCmd.AddCommand(deleteCmd)

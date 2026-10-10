@@ -381,6 +381,7 @@ example (volume, generated secret, Postgres, app with mounts + `{{ .databases.* 
 ```bash
 miabi apply -f docs/stack.yaml --dry-run  # preview the plan (+ creates, ~ updates, - deletes)
 miabi apply -f app.yaml -f db.yaml        # multiple files → one bundle
+miabi apply -f gitops/prod                # every .yaml/.yml under the directory, as a Git source reads it
 cat stack.yaml | miabi apply -f -         # stdin
 miabi apply -f docs/stack.yaml --prune    # also delete managed resources absent from the bundle
 ```
