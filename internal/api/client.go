@@ -1082,6 +1082,12 @@ func (c *Client) Secrets(ctx context.Context, ws string) ([]Secret, error) {
 	return s, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/secrets?page=0&size=500", ws), &s)
 }
 
+// SealingKey returns the workspace's active public sealing key.
+func (c *Client) SealingKey(ctx context.Context, ws string) (*SealingKey, error) {
+	var k SealingKey
+	return &k, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/sealing-key", ws), &k)
+}
+
 func (c *Client) CreateSecret(ctx context.Context, ws string, req CreateSecretRequest) (*Secret, error) {
 	var s Secret
 	return &s, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/secrets", ws), req, &s)

@@ -551,9 +551,17 @@ type Secret struct {
 	Version int `json:"version"`
 	// Managed marks a secret owned by a platform resource (e.g. a managed
 	// database); rotate it via its owner, not by hand.
-	Managed   bool      `json:"managed"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Managed bool `json:"managed"`
+	// SealedKeyVersion is set when the value came from a sealed value in a manifest.
+	SealedKeyVersion int       `json:"sealed_key_version,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// SealingKey is the public key a workspace's secrets are sealed to.
+type SealingKey struct {
+	Version   int    `json:"version"`
+	PublicKey string `json:"public_key"`
 }
 
 // CreateSecretRequest is the body of POST .../secrets.
