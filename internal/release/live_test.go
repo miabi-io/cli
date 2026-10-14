@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestLatestLive hits the real GitHub API. Skipped in -short so CI and offline work stay green;
+// TestLatestLive hits versions.miabi.io (or GitHub as the fallback). Skipped in -short so CI and offline work stay green;
 // run with `go test ./internal/release -run Live -v` to check the contract against production.
 func TestLatestLive(t *testing.T) {
 	if testing.Short() {
@@ -13,7 +13,7 @@ func TestLatestLive(t *testing.T) {
 	}
 	v, err := Latest(context.Background(), "miabi-cli/test")
 	if err != nil {
-		t.Skipf("GitHub unreachable or rate-limited: %v", err)
+		t.Skipf("release lookup unreachable: %v", err)
 	}
 	if v == "" || v[0] == 'v' {
 		t.Fatalf("Latest() = %q; want a bare version with no leading v", v)

@@ -118,18 +118,21 @@ const DefaultPlatformImage = platformRepo + ":latest"
 // The platform version is NOT baked into this binary. The CLI releases on its own cadence — one cut
 // months ago still has to install today's Miabi — so a build-time stamp would pin every install to
 // whatever was current when the CLI was built, and would go stale the moment the platform shipped
-// without the CLI. It is looked up instead, falling back to :latest so a host with no route to
-// GitHub still installs rather than refusing outright.
+// without the CLI. It is looked up on versions.miabi.io instead, falling back to :latest so a host
+// with no route out still installs rather than refusing outright.
 func defaultControlPlaneImage() string {
 	ctx, cancel := context.WithTimeout(context.Background(), releaseLookupTimeout)
 	defer cancel()
-	v, err := release.Latest(ctx, "miabi-cli/"+version)
+	r, err := release.LatestRelease(ctx, "miabi-cli/"+version)
 	if err != nil {
 		ui.Warn("could not determine the latest Miabi version (%v) — falling back to %s.\n"+
 			"    Pin one with --version 1.8.0 to keep rollback and drift detection working.", err, DefaultPlatformImage)
 		return DefaultPlatformImage
 	}
-	return platformRepo + ":" + v
+	if r.Reason == release.ReasonSecurity {
+		ui.Info("Miabi %s is a security release: %s", r.Version, r.ReleaseURL)
+	}
+	return platformRepo + ":" + r.Version
 }
 
 // releaseLookupTimeout sits in front of an install, so it fails fast enough that the operator
