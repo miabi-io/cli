@@ -34,7 +34,7 @@ brews:
     ids: [miabi]
     homepage: "https://miabi.io"
     description: "Command-line client for the Miabi control panel"
-    license: "Apache-2.0"
+    license: "AGPL-3.0-or-later"
     directory: Formula
     repository:
       owner: miabi-io
