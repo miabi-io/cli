@@ -659,6 +659,8 @@ type ApplyRequest struct {
 	DryRun    bool   `json:"dry_run"`
 	// Delete removes exactly the resources the bundle names instead of converging.
 	Delete bool `json:"delete,omitempty"`
+	// Force changes resources a GitOps project owns; its next sync reverts them.
+	Force bool `json:"force,omitempty"`
 }
 
 // Change is one planned operation on a resource.

@@ -38,6 +38,7 @@ var (
 	applyFiles  []string
 	applyPrune  bool
 	applyDryRun bool
+	applyForce  bool
 )
 
 func init() {
@@ -45,17 +46,19 @@ func init() {
 	f.StringArrayVarP(&applyFiles, "file", "f", nil, "manifest file or directory; repeat for several, or '-' for stdin (required)")
 	f.BoolVar(&applyPrune, "prune", false, "delete managed resources absent from the bundle")
 	f.BoolVar(&applyDryRun, "dry-run", false, "show the plan without applying")
+	f.BoolVar(&applyForce, "force", false, "change resources a GitOps project owns (its next sync reverts them)")
 	_ = applyCmd.MarkFlagRequired("file")
 	rootCmd.AddCommand(applyCmd)
 }
 
 var applyCmd = &cobra.Command{
-	Use:   "apply -f stack.yaml [--prune] [--dry-run]",
+	Use:   "apply -f stack.yaml [--prune] [--dry-run] [--force]",
 	Short: "Converge the workspace to a bundle of miabi.io/v1 manifests",
 	Long: "Reads one or more miabi.io/v1 YAML manifests and converges the workspace to\n" +
-		"them via the apply API. --dry-run prints the plan; --prune deletes managed\n" +
-		"resources that are absent from the bundle. Exits non-zero if any resource\n" +
-		"fails to converge.",
+		"them via the apply API. --dry-run prints the plan; --prune deletes resources\n" +
+		"a previous miabi apply created that are absent from the bundle (never a\n" +
+		"GitOps project's). Resources a GitOps project owns are refused unless\n" +
+		"--force. Exits non-zero if any resource fails to converge.",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx := context.Background()
 		bundle, err := readManifests(applyFiles)
@@ -72,7 +75,7 @@ var applyCmd = &cobra.Command{
 		}
 
 		if applyDryRun {
-			plan, err := c.PlanApply(ctx, ws, bundle, applyPrune)
+			plan, err := c.PlanApply(ctx, ws, bundle, applyPrune, applyForce)
 			if err != nil {
 				return err
 			}
@@ -84,7 +87,7 @@ var applyCmd = &cobra.Command{
 			return nil
 		}
 
-		res, err := c.Apply(ctx, ws, bundle, applyPrune)
+		res, err := c.Apply(ctx, ws, bundle, applyPrune, applyForce)
 		if err != nil {
 			return err
 		}

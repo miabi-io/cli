@@ -1151,16 +1151,16 @@ func (c *Client) ResolveSecretID(ctx context.Context, ws, ref string) (uint, err
 // ========= declarative apply ===================================
 
 // PlanApply previews converging the workspace to the manifest bundle (dry-run).
-func (c *Client) PlanApply(ctx context.Context, ws string, manifests string, prune bool) (*Plan, error) {
+func (c *Client) PlanApply(ctx context.Context, ws string, manifests string, prune, force bool) (*Plan, error) {
 	var p Plan
-	req := ApplyRequest{Manifests: manifests, Prune: prune, DryRun: true}
+	req := ApplyRequest{Manifests: manifests, Prune: prune, Force: force, DryRun: true}
 	return &p, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apply", ws), req, &p)
 }
 
 // Apply converges the workspace to the manifest bundle.
-func (c *Client) Apply(ctx context.Context, ws string, manifests string, prune bool) (*ApplyResult, error) {
+func (c *Client) Apply(ctx context.Context, ws string, manifests string, prune, force bool) (*ApplyResult, error) {
 	var r ApplyResult
-	req := ApplyRequest{Manifests: manifests, Prune: prune, DryRun: false}
+	req := ApplyRequest{Manifests: manifests, Prune: prune, Force: force, DryRun: false}
 	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apply", ws), req, &r)
 }
 
