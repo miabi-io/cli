@@ -4,8 +4,8 @@ go 1.27.2
 
 require (
 	github.com/containerd/errdefs v1.0.0
-	github.com/jkaninda/okapi v1.0.0
-	github.com/miabi-io/miabi v1.10.18
+	github.com/jkaninda/okapi v1.1.0
+	github.com/miabi-io/miabi v1.10.20
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.1
 	github.com/spf13/cobra v1.10.2
@@ -14,7 +14,8 @@ require (
 )
 
 require (
-	filippo.io/age v1.2.1 // indirect
+	filippo.io/age v1.3.2 // indirect
+	filippo.io/hpke v0.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
