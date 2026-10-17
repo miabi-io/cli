@@ -47,6 +47,9 @@ func init() {
 		newUninstallCmd(),
 		newMigrateConfigCmd(),
 		newStackEnvCmd(),
+		newBackupCmd(),
+		newBackupsCmd(),
+		newRestoreCmd(),
 	)
 
 	setupCmd := newSetupCmd("setup")
@@ -264,7 +267,9 @@ func newUpgradeCmd(use string) *cobra.Command {
 			"to ask for.\n\n" +
 			"--version keeps the current registry and repository and swaps only the tag, so it stays\n" +
 			"correct on a private registry and on components that are not miabi/miabi. --image replaces\n" +
-			"the reference outright. A leading \"v\" is optional: v1.8.0 and 1.8.0 both work.",
+			"the reference outright. A leading \"v\" is optional: v1.8.0 and 1.8.0 both work.\n\n" +
+			"A failed rollout rolls back the image, not a schema the new version already migrated.\n" +
+			"Take a dump first with `miabi stack backup`.",
 		Example: "  sudo miabi upgrade\n" +
 			"  sudo miabi upgrade --version v1.8.0\n" +
 			"  sudo miabi upgrade miabi-gateway --version 0.14.0\n" +
