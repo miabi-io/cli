@@ -171,7 +171,7 @@ type setupOpts struct {
 	domain, adminEmail, acmeEmail, controlURL    string
 	version                                      string
 	image, gatewayImage, runnerImage, gomaConfig string
-	registry, noHostProc, yes                    bool
+	registry, noHostProc, ipv6, yes              bool
 	registryHost, subnet, internalSubnet, file   string
 }
 
@@ -184,7 +184,9 @@ func newSetupCmd(use string) *cobra.Command {
 		Short: "Install the Miabi stack on this host, or converge an existing install",
 		Long: "setup is idempotent. Run against an existing manifest it converges the stack to match,\n" +
 			"keeping the stored secrets — a regenerated database password would lock the control plane\n" +
-			"out of its own data. Re-running after hand-editing the manifest is how that edit is applied.",
+			"out of its own data. Re-running after hand-editing the manifest is how that edit is applied.\n\n" +
+			"The first admin's password is generated unless " + stack.AdminPasswordEnv + " is set (at least\n" +
+			"12 characters). It is read from the environment, not a flag, so it stays out of the process list.",
 		Example: "  sudo miabi setup --domain miabi.example.com\n" +
 			"  sudo miabi setup --domain miabi.example.com --registry --yes",
 		Args:          cobra.NoArgs,
@@ -205,6 +207,7 @@ func newSetupCmd(use string) *cobra.Command {
 	f.BoolVar(&o.registry, "registry", false, "enable the built-in container registry")
 	f.StringVar(&o.registryHost, "registry-host", "", "registry hostname (default registry.<domain>); implies --registry")
 	f.BoolVar(&o.noHostProc, "no-host-proc", false, "do not bind the host's /proc into the control plane (host metrics fall back to the container's /proc)")
+	f.BoolVar(&o.ipv6, "ipv6", false, "give the app network and workspace networks IPv6 (dual-stack)")
 	f.StringVar(&o.subnet, "subnet", "", "CIDR for the shared `"+stack.DefaultNetwork+"` network — apps and the gateway (default "+stack.DefaultSubnet+")")
 	f.StringVar(&o.internalSubnet, "internal-subnet", "", "CIDR for the private `"+stack.DefaultInternalNetwork+"` network — control plane, database, cache (default "+stack.DefaultInternalSubnet+")")
 	f.StringVarP(&o.file, "file", "f", "", "manifest path (default "+stack.DefaultConfigPath+")")
@@ -237,8 +240,9 @@ func runSetup(_ *cobra.Command, o *setupOpts) error {
 		Domain: o.domain, AdminEmail: o.adminEmail, ACMEEmail: o.acmeEmail, ControlURL: o.controlURL,
 		Image: image, GatewayImage: o.gatewayImage, RunnerImage: o.runnerImage, GomaConfig: o.gomaConfig,
 		RegistryHost: o.registryHost, Subnet: o.subnet, InternalSubnet: o.internalSubnet,
-		Registry: o.registry, NoHostProc: o.noHostProc, Yes: o.yes,
-		DefaultImage: defaultControlPlaneImage,
+		Registry: o.registry, NoHostProc: o.noHostProc, IPv6: o.ipv6, Yes: o.yes,
+		AdminPassword: os.Getenv(stack.AdminPasswordEnv),
+		DefaultImage:  defaultControlPlaneImage,
 	}, cliUI{})
 	if err != nil {
 		return err
