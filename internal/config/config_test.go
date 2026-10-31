@@ -219,3 +219,71 @@ func mustRead(t *testing.T, p string) []byte {
 	}
 	return b
 }
+
+func TestResolveEnvContextSelectsAnother(t *testing.T) {
+	withConfig(t, `current: prod
+contexts:
+  prod: {server: {url: https://prod.example.com}, token: p, workspace: {id: 1, name: live}}
+  dev:  {server: {url: https://dev.example.com},  token: d, workspace: {id: 2, name: test}}
+`)
+	t.Setenv("MIABI_CONTEXT", "dev")
+	eff, err := Resolve(Flags{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if eff.Context != "dev" || eff.URL != "https://dev.example.com" || eff.Token != "d" || eff.Workspace.Name != "test" {
+		t.Fatalf("MIABI_CONTEXT did not select dev: %+v", eff)
+	}
+}
+
+func TestResolveUnknownExplicitContextFails(t *testing.T) {
+	withConfig(t, "current: prod\ncontexts:\n  prod: {server: {url: https://prod.example.com}, token: p}\n")
+	if _, err := Resolve(Flags{Context: "typo"}); err == nil || !strings.Contains(err.Error(), `"typo"`) {
+		t.Fatalf("unknown --context: err = %v", err)
+	}
+	t.Setenv("MIABI_CONTEXT", "typo")
+	if _, err := Resolve(Flags{}); err == nil {
+		t.Fatal("unknown MIABI_CONTEXT fell back to the current context")
+	}
+}
+
+func TestResolveOtherServerDropsContextValues(t *testing.T) {
+	withConfig(t, `current: prod
+contexts:
+  prod:
+    server: {url: https://prod.example.com, ca: /prod/ca.pem, insecure_skip: true}
+    token: prod_token
+    workspace: {id: 1, name: live}
+    app: {id: 3, name: web}
+`)
+	t.Setenv("MIABI_TOKEN", "")
+	if _, err := Resolve(Flags{Server: "https://other.example.com"}); err == nil {
+		t.Fatal("the prod token was sent to another server")
+	}
+	eff, err := Resolve(Flags{Server: "https://other.example.com", Token: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if eff.Context != "" || eff.CA != "" || eff.InsecureSkip || eff.Workspace != nil || eff.App != nil {
+		t.Fatalf("context values leaked to another server: %+v", eff)
+	}
+	eff, err = Resolve(Flags{Server: "https://PROD.example.com/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if eff.Context != "prod" || eff.Token != "prod_token" || eff.Workspace == nil {
+		t.Fatalf("same server should keep the context: %+v", eff)
+	}
+}
+
+func TestEnsureSelectedKeepsCurrent(t *testing.T) {
+	withConfig(t, "current: prod\ncontexts:\n  prod: {server: {url: https://prod.example.com}, token: p}\n  dev: {server: {url: https://dev.example.com}, token: d}\n")
+	f, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.EnsureSelected("dev").Workspace = &WorkspaceRef{ID: 2, Name: "test"}
+	if f.Current != "prod" || f.Contexts["dev"].Workspace == nil || f.Contexts["prod"].Workspace != nil {
+		t.Fatalf("binding landed in the wrong context: current=%s prod=%+v dev=%+v", f.Current, f.Contexts["prod"], f.Contexts["dev"])
+	}
+}
