@@ -58,7 +58,7 @@ var workspaceListCmd = &cobra.Command{
 		}
 		active := ""
 		if f, ferr := config.Load(); ferr == nil {
-			if cur := f.CurrentContext(); cur != nil && cur.Workspace != nil {
+			if cur := f.Selected(flagContext); cur != nil && cur.Workspace != nil {
 				active = cur.Workspace.Name
 			}
 		}
@@ -83,7 +83,7 @@ var workspaceShowCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		cur := f.CurrentContext()
+		cur := f.Selected(flagContext)
 		if cur == nil || cur.Workspace == nil {
 			fmt.Println("No active workspace. Set one with `miabi workspace switch <name>`.")
 			return nil
@@ -108,7 +108,7 @@ var workspaceSwitchCmd = &cobra.Command{
 	Short: "Set the active workspace, persisting it to config",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		c, _, err := newClient()
+		c, eff, err := newClient()
 		if err != nil {
 			return err
 		}
@@ -124,7 +124,10 @@ var workspaceSwitchCmd = &cobra.Command{
 				if err != nil {
 					return err
 				}
-				cur := f.EnsureCurrent()
+				cur, err := bindContext(f, eff)
+				if err != nil {
+					return err
+				}
 				cur.Workspace = &config.WorkspaceRef{ID: w.ID, Name: w.Name, DisplayName: w.DisplayName}
 				// The bound app belongs to the old workspace — clear it so a stale
 				// app never leaks across a workspace switch.

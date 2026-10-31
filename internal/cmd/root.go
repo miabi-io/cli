@@ -133,6 +133,15 @@ func newClient() (*api.Client, *config.Effective, error) {
 	return c, eff, nil
 }
 
+// bindContext is the context a workspace or app binding is saved in: the one this call ran against.
+func bindContext(f *config.File, eff *config.Effective) (*config.Context, error) {
+	if eff.Context == "" && f.Selected(flagContext) != nil {
+		return nil, fmt.Errorf("the server in use is not the one of context %q — pass --context to choose where to save this",
+			f.SelectedName(flagContext))
+	}
+	return f.EnsureSelected(flagContext), nil
+}
+
 // workspaceRef resolves the workspace name (handle) the API addresses by for the
 // current invocation: --workspace, else the persisted active workspace, else a
 // workspace-bound token's own workspace, else the sole accessible workspace.

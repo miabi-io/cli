@@ -183,6 +183,37 @@ func (f *File) EnsureCurrent() *Context {
 	return f.EnsureContext("default")
 }
 
+// SelectedName is the context a command runs against: --context, else
+// MIABI_CONTEXT, else the file's current one.
+func (f *File) SelectedName(flag string) string {
+	return firstNonEmpty(flag, os.Getenv("MIABI_CONTEXT"), f.Current)
+}
+
+// Selected returns the selected context, or nil when none is set or it is unknown.
+func (f *File) Selected(flag string) *Context {
+	if f.Contexts == nil {
+		return nil
+	}
+	return f.Contexts[f.SelectedName(flag)]
+}
+
+// EnsureSelected is EnsureCurrent for the selected context; it never changes `current`.
+func (f *File) EnsureSelected(flag string) *Context {
+	name := f.SelectedName(flag)
+	if name == "" || name == f.Current {
+		return f.EnsureCurrent()
+	}
+	if c := f.Selected(flag); c != nil {
+		return c
+	}
+	if f.Contexts == nil {
+		f.Contexts = map[string]*Context{}
+	}
+	c := &Context{}
+	f.Contexts[name] = c
+	return c
+}
+
 // ContextNames returns the context names sorted, for listing.
 func (f *File) ContextNames() []string {
 	names := make([]string, 0, len(f.Contexts))
@@ -267,6 +298,7 @@ func Save(f *File) error {
 
 // Effective is the resolved context a command runs against.
 type Effective struct {
+	Context      string // the context whose settings apply; "" when none does
 	URL          string
 	Token        string
 	CA           string        // path to a CA bundle; may be empty (system roots)
@@ -289,24 +321,33 @@ type Flags struct {
 // (--context → MIABI_CONTEXT → the file's `current`) and applies precedence
 // flags → env → that context's values on top. Flags/env alone are enough (no
 // context needed), so env-only CI keeps working. MIABI_SERVER is preferred over
-// the legacy MIABI_URL. A missing/unknown context is not an error here — the
-// generic "no server configured" surfaces if nothing else supplies one.
+// the legacy MIABI_URL. A context named with --context or MIABI_CONTEXT must
+// exist. A server override pointing elsewhere drops the context's token, TLS
+// settings, workspace and app, so they never reach another server.
 func Resolve(fl Flags) (*Effective, error) {
 	f, err := Load()
 	if err != nil {
 		return nil, err
 	}
-	ctxName := firstNonEmpty(fl.Context, os.Getenv("MIABI_CONTEXT"), f.Current)
+	ctxName := f.SelectedName(fl.Context)
+	c := f.Selected(fl.Context)
+	if c == nil && firstNonEmpty(fl.Context, os.Getenv("MIABI_CONTEXT")) != "" {
+		return nil, fmt.Errorf("context %q not found — see `miabi context list`", ctxName)
+	}
+	override := firstNonEmpty(fl.Server, os.Getenv("MIABI_SERVER"), os.Getenv("MIABI_URL"))
+	if c != nil && override != "" && !sameURL(override, c.Server.URL) {
+		c = nil
+	}
 	var srv Server
 	var ctxToken string
 	var ws *WorkspaceRef
 	var app *AppRef
-	if ctxName != "" && f.Contexts != nil {
-		if c := f.Contexts[ctxName]; c != nil {
-			srv, ctxToken, ws, app = c.Server, c.Token, c.Workspace, c.App
-		}
+	if c != nil {
+		srv, ctxToken, ws, app = c.Server, c.Token, c.Workspace, c.App
+	} else {
+		ctxName = ""
 	}
-	url := firstNonEmpty(fl.Server, os.Getenv("MIABI_SERVER"), os.Getenv("MIABI_URL"), srv.URL)
+	url := firstNonEmpty(override, srv.URL)
 	token := firstNonEmpty(fl.Token, os.Getenv("MIABI_TOKEN"), ctxToken)
 	ca := firstNonEmpty(fl.CA, os.Getenv("MIABI_CA"), srv.CA)
 	insecure := fl.InsecureSkip || envBool("MIABI_INSECURE_SKIP_TLS_VERIFY") || srv.InsecureSkip
@@ -316,7 +357,11 @@ func Resolve(fl Flags) (*Effective, error) {
 	if token == "" {
 		return nil, fmt.Errorf("no API token configured — pass --token, set MIABI_TOKEN, or run `miabi login`")
 	}
-	return &Effective{URL: url, Token: token, CA: ca, InsecureSkip: insecure, Workspace: ws, App: app}, nil
+	return &Effective{Context: ctxName, URL: url, Token: token, CA: ca, InsecureSkip: insecure, Workspace: ws, App: app}, nil
+}
+
+func sameURL(a, b string) bool {
+	return strings.EqualFold(strings.TrimRight(a, "/"), strings.TrimRight(b, "/"))
 }
 
 func firstNonEmpty(vs ...string) string {
