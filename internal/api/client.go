@@ -416,6 +416,30 @@ func (c *Client) TriggerPipeline(ctx context.Context, ws, pipeline string, req T
 	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/pipelines/%s/trigger", ws, pipeline), req, &r)
 }
 
+// PipelineVersioning returns the version policy covering a pipeline's image repository.
+func (c *Client) PipelineVersioning(ctx context.Context, ws, pipeline string) (*VersionPolicy, error) {
+	var p VersionPolicy
+	return &p, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/pipelines/%s/versioning", ws, url.PathEscape(pipeline)), &p)
+}
+
+// UpdateVersionPolicy replaces a policy's settings.
+func (c *Client) UpdateVersionPolicy(ctx context.Context, ws, policy string, s VersionSettings) (*VersionPolicy, error) {
+	var p VersionPolicy
+	return &p, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/versioning/policies/%s", ws, url.PathEscape(policy)), s, &p)
+}
+
+// SwitchVersionSeries moves a semver policy to another version line.
+func (c *Client) SwitchVersionSeries(ctx context.Context, ws, policy, series string) (*VersionPolicy, error) {
+	var p VersionPolicy
+	return &p, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/versioning/policies/%s/switch-series", ws, url.PathEscape(policy)), map[string]string{"series": series}, &p)
+}
+
+// VersionAllocations lists the newest versions a policy handed out.
+func (c *Client) VersionAllocations(ctx context.Context, ws, policy string, size int) ([]VersionAllocation, error) {
+	var out []VersionAllocation
+	return out, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/versioning/policies/%s/allocations?size=%d", ws, url.PathEscape(policy), size), &out)
+}
+
 // RerunPipelineRun re-runs an earlier run at the same ref and commit.
 func (c *Client) RerunPipelineRun(ctx context.Context, ws string, runID uint, req RerunPipelineRequest) (*PipelineRun, error) {
 	var r PipelineRun
