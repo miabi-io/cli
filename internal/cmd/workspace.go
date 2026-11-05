@@ -37,7 +37,7 @@ func init() {
 var workspaceCmd = &cobra.Command{
 	Use:     "workspace",
 	Aliases: []string{"ws"},
-	Short:   "Manage the active workspace context",
+	Short:   "Manage the active workspace, and move workspaces between Miabi servers",
 }
 
 var workspaceListCmd = &cobra.Command{
