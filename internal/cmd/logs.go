@@ -75,7 +75,6 @@ var logsCmd = &cobra.Command{
 		}
 		base := strings.TrimRight(eff.URL, "/")
 
-		// Deployment build/deploy logs — addressed by the per-app number.
 		if logsDeployment > 0 {
 			dep, err := c.DeploymentByNumber(ctx, ws, appRef, logsDeployment)
 			if err != nil {
@@ -85,14 +84,12 @@ var logsCmd = &cobra.Command{
 			return streamDeployLogs(ctx, url, eff.Token)
 		}
 
-		// Runtime container logs (default).
 		follow := logsFollow
 		url := fmt.Sprintf("%s/api/v1/workspaces/%s/apps/%s/logs/stream?tail=%d&follow=%t", base, ws, neturl.PathEscape(appRef), logsTail, follow)
 		return streamRuntimeLogs(ctx, url, eff.Token)
 	},
 }
 
-// newSSERequest builds an authenticated GET for an SSE endpoint.
 func newSSERequest(ctx context.Context, url, token string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -103,7 +100,6 @@ func newSSERequest(ctx context.Context, url, token string) (*http.Response, erro
 	return http.DefaultClient.Do(req)
 }
 
-// scanSSE calls onData for each SSE `data:` payload on the response body.
 func scanSSE(resp *http.Response, onData func([]byte)) error {
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -118,14 +114,12 @@ func scanSSE(resp *http.Response, onData func([]byte)) error {
 	return sc.Err()
 }
 
-// deployEvent mirrors the deployment stream payload: {"Type":"log|status","Data":"…"}.
 type deployEvent struct {
 	Type string `json:"Type"`
 	Data string `json:"Data"`
 }
 
-// streamDeployLogs reads the deployment-log SSE stream, printing log lines and
-// exiting when the deployment reaches a terminal status (failed → non-zero exit).
+// streamDeployLogs returns once the deployment is terminal, erroring when it failed.
 func streamDeployLogs(ctx context.Context, url, token string) error {
 	resp, err := newSSERequest(ctx, url, token)
 	if err != nil {
@@ -160,14 +154,11 @@ func streamDeployLogs(ctx context.Context, url, token string) error {
 	return nil
 }
 
-// runtimeLine mirrors the runtime log payload: {"stream":"stdout|stderr","text":"…"}.
 type runtimeLine struct {
 	Stream string `json:"stream"`
 	Text   string `json:"text"`
 }
 
-// streamRuntimeLogs reads the runtime container-log SSE stream, printing each
-// line (stderr dimmed) until the stream ends or the context is cancelled.
 func streamRuntimeLogs(ctx context.Context, url, token string) error {
 	resp, err := newSSERequest(ctx, url, token)
 	if err != nil {

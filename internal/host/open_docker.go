@@ -30,9 +30,7 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack"
 )
 
-// Open connects to the local Docker engine and returns a stack service bound to manifestPath. The
-// daemon is pinged before anything else so an unreachable or permission-denied socket is reported
-// once, in the operator's language, instead of failing inside the first converge step.
+// Open pings first so a bad socket is reported once, not from inside the first converge step.
 func Open(manifestPath string, log func(string, ...any)) (*Session, error) {
 	dc, err := dockerclient.New()
 	if err != nil {
@@ -51,8 +49,7 @@ func Open(manifestPath string, log func(string, ...any)) (*Session, error) {
 	}, nil
 }
 
-// InspectSelfImage reads back the image of the container with the given id, so an installer running
-// as a container can pin the exact ref it was started from. Empty when it cannot be determined.
+// InspectSelfImage lets an installer running as a container pin the exact image ref it was started from.
 func InspectSelfImage(ctx context.Context, id string) string {
 	dc, err := dockerclient.New()
 	if err != nil {

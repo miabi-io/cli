@@ -117,7 +117,6 @@ var appCreateCmd = &cobra.Command{
 		"  miabi apps create api --git-repo https://github.com/acme/api --git-ref main --use",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Infer the source type from the flags; require exactly one source.
 		source := ""
 		switch {
 		case appCreateGitRepo != "":
@@ -216,8 +215,7 @@ var appRmCmd = &cobra.Command{
 		if err := c.DeleteApp(ctx, ws, appRef); err != nil {
 			return err
 		}
-		// Clear the bound app if we just deleted it, so later commands don't
-		// resolve a dangling reference.
+		// Clear the binding so later commands don't resolve a deleted app.
 		if f, ferr := config.Load(); ferr == nil {
 			if cur := f.Selected(flagContext); cur != nil && cur.App != nil && (cur.App.Name == appRef || strconv.FormatUint(uint64(cur.App.ID), 10) == appRef) {
 				cur.App = nil

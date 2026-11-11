@@ -111,10 +111,7 @@ var applyCmd = &cobra.Command{
 	},
 }
 
-// readManifests concatenates the given files into one multi-document bundle,
-// separating them with the YAML document marker. "-" reads stdin, an http(s)
-// URL is fetched, and a directory reads every .yaml and .yml file under it, as
-// a Git source does.
+// readManifests bundles the files as one multi-document YAML; "-" is stdin, a URL is fetched, a directory is walked.
 func readManifests(files []string) (string, error) {
 	var docs []string
 	add := func(data []byte) {
@@ -188,9 +185,7 @@ func fetchManifest(url string) ([]byte, error) {
 	return data, nil
 }
 
-// manifestPaths expands name to the files it stands for: itself, or for a
-// directory every .yaml and .yml file under it in path order, the same files a
-// Git source pointed at that directory reads.
+// manifestPaths lists a directory's .yaml/.yml files in path order, matching what a Git source reads.
 func manifestPaths(name string) ([]string, error) {
 	info, err := os.Stat(name)
 	if err != nil {
@@ -223,7 +218,6 @@ func manifestPaths(name string) ([]string, error) {
 	return paths, nil
 }
 
-// printChanges renders a plan as a table, skipping no-op entries.
 func printChanges(changes []api.Change) {
 	var shown int
 	tw := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)

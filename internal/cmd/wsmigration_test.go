@@ -138,8 +138,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 
 const testCode = "miabi-migrate:secret"
 
-// setupMigration starts a source and a target server and saves them as the contexts "old" and "new",
-// "new" being current.
+// setupMigration saves a source and target server as contexts "old" and "new", "new" being current.
 func setupMigration(t *testing.T, fx *migrationFixture) {
 	t.Helper()
 	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

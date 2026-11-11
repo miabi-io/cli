@@ -25,17 +25,12 @@ import (
 	"strings"
 )
 
-// prompt is a ready-made, parameterized instruction an agent can invoke. render
-// turns the caller's arguments into the user message guiding the agent through
-// the relevant tools. Prompts never call the API themselves — they only shape the
-// conversation.
+// prompt only shapes the conversation; it never calls the API itself.
 type prompt struct {
 	def    promptDef
 	render func(args map[string]string) string
 }
 
-// wsClause renders an optional "(in workspace X)" fragment plus the argument hint
-// telling the agent which workspace to pass to tools.
 func wsClause(args map[string]string) string {
 	if ws := args["workspace"]; ws != "" {
 		return fmt.Sprintf(" in workspace %q (pass workspace=%q to every tool)", ws, ws)
@@ -43,7 +38,6 @@ func wsClause(args map[string]string) string {
 	return " (using the active workspace)"
 }
 
-// registerPrompts installs the diagnostic prompt catalog.
 func (s *Server) registerPrompts() {
 	appArg := promptArg{Name: "app", Description: "application handle or numeric id", Required: true}
 	wsArg := promptArg{Name: "workspace", Description: "workspace name (default: the active workspace)"}
@@ -110,8 +104,6 @@ func (s *Server) promptDefs() []promptDef {
 	return defs
 }
 
-// handlePromptGet validates the requested prompt's required arguments and renders
-// it into a single user message.
 func (s *Server) handlePromptGet(raw json.RawMessage) (*getPromptResult, *rpcError) {
 	var p getPromptParams
 	if err := json.Unmarshal(raw, &p); err != nil {

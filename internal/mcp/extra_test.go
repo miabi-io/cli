@@ -55,7 +55,6 @@ func TestPromptsList(t *testing.T) {
 }
 
 func TestPromptGetRendersAndValidates(t *testing.T) {
-	// Happy path: the app name is interpolated into the message.
 	resps := drive(t, false, `{"jsonrpc":"2.0","id":1,"method":"prompts/get","params":{"name":"diagnose_deployment","arguments":{"app":"web","workspace":"prod"}}}`)
 	var res getPromptResult
 	remarshal(t, resps[0].Result, &res)
@@ -67,13 +66,11 @@ func TestPromptGetRendersAndValidates(t *testing.T) {
 		t.Errorf("rendered prompt missing interpolated args: %q", text)
 	}
 
-	// Missing required arg → invalid params error.
 	bad := drive(t, false, `{"jsonrpc":"2.0","id":2,"method":"prompts/get","params":{"name":"diagnose_deployment","arguments":{}}}`)
 	if bad[0].Error == nil || bad[0].Error.Code != codeInvalidParams {
 		t.Errorf("missing arg should yield invalid params, got %+v", bad[0])
 	}
 
-	// Unknown prompt → method not found.
 	unknown := drive(t, false, `{"jsonrpc":"2.0","id":3,"method":"prompts/get","params":{"name":"nope","arguments":{}}}`)
 	if unknown[0].Error == nil || unknown[0].Error.Code != codeMethodNotFound {
 		t.Errorf("unknown prompt should yield method not found, got %+v", unknown[0])
@@ -135,12 +132,9 @@ func TestAppURIRoundTrip(t *testing.T) {
 	}
 }
 
-// TestHTTPTransport drives the HTTP handler directly (no network) and checks the
-// request/response profile and the Origin guard.
 func TestHTTPTransport(t *testing.T) {
 	s := New(Options{Version: "test"})
 
-	// A request gets a JSON-RPC response.
 	req := httptest.NewRequest(http.MethodPost, "/mcp",
 		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
 	rec := httptest.NewRecorder()
@@ -156,7 +150,6 @@ func TestHTTPTransport(t *testing.T) {
 		t.Fatalf("unexpected error: %+v", resp.Error)
 	}
 
-	// A notification gets 202 and no body.
 	note := httptest.NewRequest(http.MethodPost, "/mcp",
 		strings.NewReader(`{"jsonrpc":"2.0","method":"notifications/initialized"}`))
 	rec = httptest.NewRecorder()
@@ -165,7 +158,6 @@ func TestHTTPTransport(t *testing.T) {
 		t.Errorf("notification: status=%d bodyLen=%d, want 202/0", rec.Code, rec.Body.Len())
 	}
 
-	// A cross-origin request is rejected.
 	ebr := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader([]byte(`{}`)))
 	ebr.Header.Set("Origin", "https://evil.example.com")
 	rec = httptest.NewRecorder()
@@ -174,7 +166,6 @@ func TestHTTPTransport(t *testing.T) {
 		t.Errorf("cross-origin status = %d, want 403", rec.Code)
 	}
 
-	// GET is not allowed (no server-initiated stream).
 	get := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	rec = httptest.NewRecorder()
 	s.httpHandler(rec, get)

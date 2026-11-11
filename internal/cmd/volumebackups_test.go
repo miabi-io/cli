@@ -33,8 +33,7 @@ func TestParseBackupID(t *testing.T) {
 			t.Errorf("parseBackupID(%q) = %d, %v; want 42, nil", ref, id, err)
 		}
 	}
-	// A volume name in the id position is the likely slip, and "0" would address
-	// nothing — both must be refused rather than sent to the panel.
+	// A volume name in the id position is the likely slip, and "0" addresses nothing: refuse both.
 	for _, ref := range []string{"web-data", "0", "", "-1"} {
 		if _, err := parseBackupID(ref); err == nil {
 			t.Errorf("parseBackupID(%q) accepted a bad id", ref)
@@ -74,7 +73,6 @@ func TestBackupDuration(t *testing.T) {
 		{"seconds", api.VolumeBackup{StartedAt: &start, FinishedAt: at(42 * time.Second)}, "42s"},
 		{"minutes", api.VolumeBackup{StartedAt: &start, FinishedAt: at(3*time.Minute + 7*time.Second)}, "3m7s"},
 		{"hours", api.VolumeBackup{StartedAt: &start, FinishedAt: at(2*time.Hour + 5*time.Minute)}, "2h5m"},
-		// Still running: started, not finished.
 		{"in flight", api.VolumeBackup{StartedAt: &start}, "-"},
 		{"never started", api.VolumeBackup{}, "-"},
 	}
@@ -85,8 +83,7 @@ func TestBackupDuration(t *testing.T) {
 	}
 }
 
-// A backup's "running" is in flight; a deployment's "running" is terminal
-// success. Reusing api.IsTerminal here would end the wait on the first poll.
+// A backup's "running" is in flight, unlike a deployment's, so api.IsTerminal would end the wait at once.
 func TestBackupStatusClassification(t *testing.T) {
 	for _, s := range []string{api.BackupCompleted, api.BackupFailed} {
 		if !api.IsBackupTerminal(s) {

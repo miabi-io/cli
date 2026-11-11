@@ -31,8 +31,7 @@ import (
 	"time"
 )
 
-// A page served in front of the panel (SSO gateway, WAF, wrong host) must be
-// named as such, not reported as a JSON decode failure.
+// A gateway page must be named as such, not reported as a JSON decode failure.
 func TestClaimLoginTokenRejectsHTMLResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -142,7 +141,6 @@ func TestEmptyBodyFailureIsAnError(t *testing.T) {
 	}
 }
 
-// The envelope path stays intact: a normal API response still decodes.
 func TestEnvelopeStillDecodes(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -163,8 +161,7 @@ func TestEnvelopeStillDecodes(t *testing.T) {
 	}
 }
 
-// The volume get/delete endpoints address volumes by numeric id, so a name has
-// to be resolved from the listing before any call is made.
+// Volume get/delete take numeric ids, so a name must be resolved from the listing first.
 func TestResolveVolumeID(t *testing.T) {
 	var listed int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -205,8 +202,7 @@ func TestResolveVolumeID(t *testing.T) {
 	}
 }
 
-// A volume that has never been measured must decode with a nil UsedMeasuredAt,
-// which is what separates "empty" from "unknown" in the listing.
+// A nil UsedMeasuredAt is what separates "unknown" from "empty" in the listing.
 func TestVolumeDetailDecodes(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -235,9 +231,7 @@ func TestVolumeDetailDecodes(t *testing.T) {
 	}
 }
 
-// A file download bypasses the JSON envelope, so its failure paths have to be
-// re-established: an error still answers the envelope, and a gateway's HTML must
-// never reach the caller as if it were the file's content.
+// Downloads bypass the envelope, so errors and gateway HTML must not reach the caller as file content.
 func TestDownloadVolumeFile(t *testing.T) {
 	t.Run("raw body", func(t *testing.T) {
 		var gotQuery string
@@ -304,8 +298,7 @@ func TestDownloadVolumeFile(t *testing.T) {
 	})
 }
 
-// The upload is multipart: the panel takes the destination directory from the
-// "path" field and the file name from the part's filename.
+// The panel takes the directory from the "path" field and the file name from the part's filename.
 func TestUploadVolumeFileSendsMultipart(t *testing.T) {
 	var (
 		gotDir      string
@@ -350,8 +343,7 @@ func TestUploadVolumeFileSendsMultipart(t *testing.T) {
 	}
 }
 
-// The wait polls the history until the run settles. "running" must not end it:
-// that is terminal for a deployment, not for a backup.
+// "running" must not end the wait: it is terminal for a deployment, not for a backup.
 func TestWaitForVolumeBackup(t *testing.T) {
 	statuses := []string{"pending", "running", "running", "completed"}
 	var polls int
@@ -405,9 +397,7 @@ func TestFindVolumeBackupMissing(t *testing.T) {
 	}
 }
 
-// The point of streaming is that a large body never becomes a []byte. A response
-// bigger than any reasonable buffer must still arrive intact, and the client must
-// not have grown a copy of it along the way.
+// A body bigger than any reasonable buffer must arrive intact without the client copying it into a []byte.
 func TestDownloadVolumeFileStreams(t *testing.T) {
 	const size = 8 << 20
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -439,8 +429,7 @@ func TestDownloadVolumeFileStreams(t *testing.T) {
 	}
 }
 
-// A download's deadline has to outlive the call that starts it, or the copy dies
-// on the first read. Closing the body is what releases it.
+// A download's deadline must outlive the call that starts it; closing the body releases it.
 func TestStreamedDownloadOutlivesTheCallThatOpenedIt(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
@@ -463,8 +452,7 @@ func TestStreamedDownloadOutlivesTheCallThatOpenedIt(t *testing.T) {
 	}
 }
 
-// An error answered as the envelope must still be reported as the API's message,
-// even though the success path never reads the body.
+// An envelope error must still surface as the API's message, though the success path never reads the body.
 func TestStreamedDownloadStillDecodesAPIErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

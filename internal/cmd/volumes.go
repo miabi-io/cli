@@ -84,10 +84,7 @@ var volCmd = &cobra.Command{
 		"  miabi volumes storage",
 }
 
-// volumeConn resolves the connection context, workspace and volume id from a
-// single positional argument (name or id) — the shared preamble for volume
-// commands. The id is resolved client-side because the get/delete endpoints
-// address volumes numerically, not by name.
+// The volume id is resolved client-side because get/delete address volumes numerically, not by name.
 func volumeConn(ctx context.Context, ref string) (*api.Client, string, uint, error) {
 	c, eff, err := newClient()
 	if err != nil {
@@ -374,8 +371,7 @@ var volDetachCmd = &cobra.Command{
 	},
 }
 
-// collectDriverOpts merges --driver-opt and --driver-opt-file into the option
-// map. The file form exists so a CIFS password never reaches the shell history.
+// The --driver-opt-file form exists so a CIFS password never reaches the shell history.
 func collectDriverOpts() (map[string]string, error) {
 	opts := map[string]string{}
 	for _, spec := range volDriverOpt {
@@ -413,8 +409,7 @@ func storageLimit(limitMB int) string {
 	}
 }
 
-// volumeSize renders a declared capacity: 0 means "no ceiling was declared",
-// which humanBytes would otherwise print as "-".
+// A declared capacity of 0 means "no ceiling", which humanBytes would print as "-".
 func volumeSize(n int64) string {
 	if n <= 0 {
 		return "unlimited"
@@ -422,8 +417,7 @@ func volumeSize(n int64) string {
 	return humanBytes(n)
 }
 
-// volumeUsed renders measured usage. A volume that has never been measured is
-// not an empty volume, so it must not read as 0.
+// A never-measured volume is not an empty one, so it must not read as 0.
 func volumeUsed(v api.Volume) string {
 	if v.UsedMeasuredAt == nil {
 		return "-"
@@ -434,8 +428,7 @@ func volumeUsed(v api.Volume) string {
 	return humanBytes(v.UsedBytes)
 }
 
-// volumeDriver names the driver, defaulting a blank one to local (an older panel
-// may not send the column).
+// An older panel may not send the driver column, so a blank one means local.
 func volumeDriver(v api.Volume) string {
 	if v.Driver == "" {
 		return "local"
@@ -453,7 +446,6 @@ func volumeNode(v api.Volume) string {
 	return itoa(int(v.ServerID))
 }
 
-// completeVolumes tab-completes volume names in the active workspace.
 func completeVolumes(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp

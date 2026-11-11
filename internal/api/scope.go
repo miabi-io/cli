@@ -27,16 +27,13 @@ import (
 	"sync"
 )
 
-// scopeRequiredHeader names the scope a request would have needed. The server
-// sets it in warn mode, where the request still succeeds.
+// scopeRequiredHeader is set in warn mode, where the request still succeeds.
 const scopeRequiredHeader = "X-Miabi-Scope-Required"
 
-// scopeDeniedPrefix starts the message of an enforce-mode scope refusal. The
-// 403 carries no header or dedicated code, so the message is the only signal.
+// An enforce-mode scope 403 carries no header or code, so this message prefix is the only signal.
 const scopeDeniedPrefix = "API key missing required scope:"
 
-// ScopeError is a 403 caused by the API key lacking a scope, as opposed to the
-// caller's workspace role.
+// ScopeError is a 403 for a missing API key scope, not the caller's workspace role.
 type ScopeError struct {
 	*APIError
 	Scope string
@@ -57,8 +54,6 @@ func scopeRemedy(scope string) string {
 	}
 }
 
-// apiError fills in the status code when the envelope omits it and recognises a
-// scope refusal.
 func apiError(e *APIError, status int) error {
 	if e.StatusCode == 0 {
 		e.StatusCode = status
@@ -77,8 +72,7 @@ func apiError(e *APIError, status int) error {
 
 var warnedScopes sync.Map
 
-// warnScope tells the user, once per scope, that the server let a request
-// through only because scope enforcement is still in warn mode.
+// warnScope warns once per scope that a request passed only because enforcement is in warn mode.
 func warnScope(scope string) {
 	if scope == "" {
 		return

@@ -160,8 +160,7 @@ type linkTarget struct {
 	label  string
 }
 
-// resolveLinkTarget maps <db> [name] --app to ids. A name is required unless
-// the engine links whole instances (Redis).
+// A name is required unless the engine links whole instances (Redis).
 func resolveLinkTarget(ctx context.Context, args []string) (*linkTarget, error) {
 	c, eff, err := newClient()
 	if err != nil {

@@ -78,8 +78,7 @@ func TestOpsToolsGating(t *testing.T) {
 	}
 }
 
-// fakePanel serves the routes the ops tools touch and records each request as
-// "METHOD path?query" plus, for POSTs, the body.
+// fakePanel records each request as "METHOD path?query", plus the body for POSTs.
 type fakePanel struct {
 	reqs   []string
 	bodies []string
@@ -122,8 +121,6 @@ func (f *fakePanel) handler(t *testing.T) http.HandlerFunc {
 	}
 }
 
-// callTool runs one tools/call against a server backed by the fake panel and
-// returns the decoded JSON payload.
 func callTool(t *testing.T, allowWrite bool, name string, args map[string]any) (*fakePanel, map[string]any, any) {
 	t.Helper()
 	fp := &fakePanel{}

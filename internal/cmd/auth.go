@@ -47,8 +47,7 @@ var (
 	loginScopes    []string
 )
 
-// grantableScopes are the scopes a login token may carry. admin and "*" are absent because the
-// server refuses to mint a CLI token with either — a login token is never an administrative one.
+// admin and "*" are absent because the server refuses to mint a CLI token with either.
 var grantableScopes = map[string]bool{"read": true, "write": true, "deploy": true}
 
 func init() {
@@ -58,8 +57,7 @@ func init() {
 	rootCmd.AddCommand(loginCmd, whoamiCmd)
 }
 
-// normalizeLoginScopes validates the requested scopes locally so a typo fails here, with the list
-// of what is accepted, rather than as an opaque rejection after the browser round-trip.
+// normalizeLoginScopes fails a typo here rather than as an opaque rejection after the browser round-trip.
 func normalizeLoginScopes(in []string) ([]string, error) {
 	out := make([]string, 0, len(in))
 	seen := map[string]bool{}
@@ -94,8 +92,7 @@ var loginCmd = &cobra.Command{
 		"  # Deploy-only credentials for CI:\n" +
 		"  miabi login --scopes deploy",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		// An explicit token (flag or env) is the non-interactive path: validate and
-		// save it directly, no browser. --web overrides to force the browser flow.
+		// An explicit token is the non-interactive path; --web forces the browser flow anyway.
 		if !loginWeb && firstNonEmpty(flagToken, os.Getenv("MIABI_TOKEN")) != "" {
 			return runTokenLogin()
 		}
@@ -114,9 +111,7 @@ var loginCmd = &cobra.Command{
 	},
 }
 
-// resolveLoginServer picks the panel URL to sign in against: an explicit
-// --server/env, else the current context's server so a bare `miabi login`
-// re-authenticates the context in place.
+// resolveLoginServer falls back to the current context's server so a bare `miabi login` re-authenticates it.
 func resolveLoginServer() (string, error) {
 	if u := firstNonEmpty(serverFlag(), os.Getenv("MIABI_SERVER"), os.Getenv("MIABI_URL")); u != "" {
 		return strings.TrimRight(u, "/"), nil
@@ -129,8 +124,6 @@ func resolveLoginServer() (string, error) {
 	return "", fmt.Errorf("no server URL configured — pass --server or set MIABI_SERVER")
 }
 
-// runTokenLogin is the non-interactive path: validate the --token/env token
-// against /me and persist it.
 func runTokenLogin() error {
 	c, eff, err := newClient()
 	if err != nil {
@@ -143,10 +136,7 @@ func runTokenLogin() error {
 	return saveLogin(eff.URL, eff.Token, config.Server{URL: eff.URL, CA: eff.CA, InsecureSkip: eff.InsecureSkip}, me)
 }
 
-// runLoopbackLogin is the default browser sign-in. It starts a local server on a
-// random loopback port, opens the console's /cli/authorize page pointed at that
-// callback, and waits for the browser to hand back a single-use code — which it
-// exchanges for the token. The token never touches the clipboard or the terminal.
+// runLoopbackLogin receives a single-use code to exchange, so the token never touches the clipboard or terminal.
 func runLoopbackLogin(serverURL string, scopes []string) error {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -220,9 +210,7 @@ func runLoopbackLogin(serverURL string, scopes []string) error {
 	return persistBrowserLogin(serverURL, tok.Token, scopes)
 }
 
-// runManualLogin is the --no-browser fallback: it opens (or prints) the console's
-// "Copy login command" page and reads a pasted token from stdin. For machines
-// that can reach a browser elsewhere but can't accept a local callback.
+// runManualLogin is for machines that can reach a browser elsewhere but can't accept a local callback.
 func runManualLogin(serverURL string, scopes []string) error {
 	tokenPage := serverURL + "/request-token"
 	if len(scopes) > 0 {
@@ -242,8 +230,6 @@ func runManualLogin(serverURL string, scopes []string) error {
 	return persistBrowserLogin(serverURL, token, scopes)
 }
 
-// persistBrowserLogin validates a token minted by a browser flow against /me and
-// saves the context, honoring the current --certificate-authority/--insecure trust.
 func persistBrowserLogin(serverURL, token string, wantScopes []string) error {
 	c, err := api.New(api.Options{BaseURL: serverURL, Token: token, CAFile: flagCA, InsecureSkip: flagInsecure, Verbose: flagVerbose})
 	if err != nil {
@@ -259,9 +245,7 @@ func persistBrowserLogin(serverURL, token string, wantScopes []string) error {
 	return saveLogin(serverURL, token, config.Server{URL: serverURL, CA: flagCA, InsecureSkip: flagInsecure}, me)
 }
 
-// assertScopes refuses to save a token broader than the one asked for. A server older than the
-// --scopes flag ignores the request and mints its full default; saving that as if it were
-// read-only is exactly the false assurance this flag exists to remove.
+// assertScopes catches a server older than --scopes that ignores the flag and mints its full default.
 func assertScopes(want, got []string) error {
 	if len(want) == 0 {
 		return nil
@@ -286,8 +270,6 @@ func assertScopes(want, got []string) error {
 		strings.Join(got, ", "), strings.Join(want, ", "))
 }
 
-// saveLogin writes the server, token, and identity into the resolved context and
-// makes it current, then prints the signed-in summary. Shared by every login path.
 func saveLogin(serverURL, token string, server config.Server, me *api.Me) error {
 	f, err := config.Load()
 	if err != nil {
@@ -310,8 +292,7 @@ func saveLogin(serverURL, token string, server config.Server, me *api.Me) error 
 	return nil
 }
 
-// randomState returns a URL-safe, unguessable value binding the browser round-trip
-// to this CLI process (CSRF protection for the loopback callback).
+// randomState binds the loopback callback to this process (CSRF protection).
 func randomState() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -320,8 +301,7 @@ func randomState() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// miabiMark is the Miabi logo, inlined so the callback page is fully
-// self-contained — it is served from 127.0.0.1 and must render with no network.
+// Inlined because the callback page is served from 127.0.0.1 and must render with no network.
 const miabiMark = `<svg viewBox="0 0 1024 1024" width="56" height="56" aria-hidden="true">` +
 	`<defs><linearGradient id="g" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">` +
 	`<stop offset="0" stop-color="#c084fc"/><stop offset=".33" stop-color="#a855f7"/>` +
@@ -332,9 +312,6 @@ const miabiMark = `<svg viewBox="0 0 1024 1024" width="56" height="56" aria-hidd
 	`<g transform="rotate(270 512 512)"><path d="M 486 168 C 416 166 306 168 326 168 C 226 168 168 226 168 326 L 168 354 C 168 454 226 486 326 486 L 354 486 C 416 486 458 458 472 472 C 458 458 486 416 486 354 L 486 168 Z" fill="url(#g)" opacity=".55"/></g>` +
 	`</svg>`
 
-// callbackPage is the branded page the browser lands on after the loopback
-// redirect. Self-contained (inline SVG + CSS, no external assets) and
-// light/dark aware, since it is served by the CLI itself over 127.0.0.1.
 const callbackPage = `<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Miabi CLI</title>
 <style>
@@ -356,8 +333,6 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 <body><div class="card">%s<div class="icon" style="--accent:%s">%s</div>
 <h1>%s</h1><p>%s</p><div class="hint">%s</div></div></body></html>`
 
-// writeCallbackPage renders the page the browser lands on after the redirect back
-// to the loopback callback — a branded success (or failure) confirmation.
 func writeCallbackPage(w http.ResponseWriter, success bool) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	const check = `<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>`
@@ -376,7 +351,6 @@ func writeCallbackPage(w http.ResponseWriter, success bool) {
 	fmt.Fprintf(w, callbackPage, miabiMark, accent, icon, title, body, hint)
 }
 
-// firstNonEmpty returns the first non-empty string.
 func firstNonEmpty(vs ...string) string {
 	for _, v := range vs {
 		if v != "" {
@@ -386,7 +360,6 @@ func firstNonEmpty(vs ...string) string {
 	return ""
 }
 
-// openBrowser best-effort opens url in the platform's default browser.
 func openBrowser(url string) error {
 	var cmd string
 	var args []string
@@ -438,10 +411,7 @@ var whoamiCmd = &cobra.Command{
 	},
 }
 
-// loginContextName picks the context name to write on login: the explicit
-// --context, else the current context when re-logging into the same server (so a
-// bare `miabi login` refreshes it in place), else the server's hostname, else
-// "default".
+// loginContextName reuses the current context when re-logging into the same server, refreshing it in place.
 func loginContextName(f *config.File, flagContext, serverURL string) string {
 	if flagContext != "" {
 		return flagContext

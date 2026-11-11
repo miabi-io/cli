@@ -83,8 +83,7 @@ var volBackupsCmd = &cobra.Command{
 			return emit(backups)
 		}
 		if len(backups) == 0 {
-			// An empty history and an unconfigured workspace look identical here,
-			// and only one of them is fixed by running a backup.
+			// An empty history and an unconfigured workspace look identical; only one is fixed by running a backup.
 			if ok, serr := c.VolumeBackupConfigured(ctx, ws, id); serr == nil && !ok {
 				ui.Info("No backups: this workspace has no S3 target configured. Set one in the panel's backup settings.")
 				return nil
@@ -364,8 +363,7 @@ func parseBackupID(ref string) (uint, error) {
 	return uint(id), nil
 }
 
-// archiveCell names the object in the bucket, which is what someone reaching for
-// the archive by hand actually needs.
+// archiveCell names the bucket object, which is what someone fetching the archive by hand needs.
 func archiveCell(b api.VolumeBackup) string {
 	if b.Filename == "" {
 		return "-"
@@ -408,8 +406,6 @@ func verifiedCell(b api.VolumeBackup) string {
 	}
 }
 
-// backupDuration renders how long a settled run took. A run still in flight has
-// no duration yet, and one that never started has none at all.
 func backupDuration(b api.VolumeBackup) string {
 	if b.StartedAt == nil || b.FinishedAt == nil {
 		return "-"

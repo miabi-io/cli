@@ -25,11 +25,9 @@ import (
 	"time"
 )
 
-// MigrationImportTimeout bounds POST /migrations and /migrations/probe, which reach the source before
-// they answer.
+// MigrationImportTimeout covers /migrations and /migrations/probe, which reach the source before answering.
 const MigrationImportTimeout = 2 * time.Minute
 
-// MigrationStartRequest is the body of POST .../migration/start.
 type MigrationStartRequest struct {
 	ExpiresInHours int `json:"expires_in_hours,omitempty"`
 }
@@ -42,14 +40,12 @@ type MigrationStarted struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-// MigrationWindow is an open migration: while it lasts, its code lets another Miabi pull.
 type MigrationWindow struct {
 	StartedAt  time.Time  `json:"started_at"`
 	ExpiresAt  *time.Time `json:"expires_at"`
 	LastUsedAt *time.Time `json:"last_used_at"`
 }
 
-// MigrationExport is one pull of a workspace by another Miabi, as the source lists it.
 type MigrationExport struct {
 	ID         uint      `json:"id"`
 	Workspace  string    `json:"workspace"`
@@ -63,7 +59,6 @@ type MigrationExport struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// MigrationOverview is a workspace's migration state on the source, or the install's for a platform admin.
 type MigrationOverview struct {
 	Enabled      bool              `json:"enabled"`
 	Window       *MigrationWindow  `json:"window"`
@@ -79,15 +74,13 @@ type MigrationStatus struct {
 	URL     string `json:"url,omitempty"`
 }
 
-// MigrationSource is a migration code and how the target trusts the source it names. CABundle is PEM
-// text, not a path.
+// MigrationSource.CABundle is PEM text, not a path.
 type MigrationSource struct {
 	Code        string `json:"code"`
 	InsecureTLS bool   `json:"insecure_skip_tls_verify"`
 	CABundle    string `json:"ca_bundle,omitempty"`
 }
 
-// MigrationWorkspace is one workspace a migration code opens, with what moving it involves.
 type MigrationWorkspace struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name,omitempty"`
@@ -98,7 +91,6 @@ type MigrationWorkspace struct {
 	SizeBytes   int64  `json:"size_bytes"`
 }
 
-// MigrationProbe is what POST /migrations/probe learns from the source a code names.
 type MigrationProbe struct {
 	InstallID string `json:"install_id"`
 	Version   string `json:"version"`
@@ -108,7 +100,6 @@ type MigrationProbe struct {
 	Workspaces    []MigrationWorkspace `json:"workspaces"`
 }
 
-// MigrationImport is the body of POST /migrations.
 type MigrationImport struct {
 	MigrationSource
 	SourceWorkspace string `json:"source_workspace,omitempty"`
@@ -120,7 +111,6 @@ type MigrationImport struct {
 	RetireSource    bool   `json:"retire_source"`
 }
 
-// MigrationReportItem is one resource's outcome in a migration report.
 type MigrationReportItem struct {
 	Kind   string `json:"kind"`
 	Name   string `json:"name"`
@@ -128,7 +118,6 @@ type MigrationReportItem struct {
 	Detail string `json:"detail,omitempty"`
 }
 
-// MigrationRun is one workspace migration into a server, as GET /migrations/{id} returns it.
 type MigrationRun struct {
 	ID                uint   `json:"id"`
 	WorkspaceID       uint   `json:"workspace_id"`
@@ -161,7 +150,6 @@ type MigrationRun struct {
 	CreatedAt  time.Time  `json:"created_at"`
 }
 
-// MigrationRunDone reports whether a workspace migration has ended.
 func MigrationRunDone(status string) bool {
 	return status == "completed" || status == "partial" || status == "failed"
 }
@@ -173,8 +161,7 @@ func migrationPath(ws string) string {
 	return fmt.Sprintf("/api/v1/workspaces/%s/migration", ws)
 }
 
-// StartWorkspaceMigration opens a migration of ws and returns its code; ws "" opens the install (platform admin).
-// Starting again replaces the open migration's code.
+// StartWorkspaceMigration with ws "" opens the install (platform admin); starting again replaces the code.
 func (c *Client) StartWorkspaceMigration(ctx context.Context, ws string, body MigrationStartRequest) (*MigrationStarted, error) {
 	var m MigrationStarted
 	return &m, c.post(ctx, migrationPath(ws)+"/start", body, &m)
@@ -201,13 +188,11 @@ func (c *Client) MigrationStatus(ctx context.Context) (*MigrationStatus, error) 
 	return &s, c.get(ctx, "/api/v1/migrations/status", &s)
 }
 
-// ProbeMigration has this server check the source a code names and list the workspaces it opens.
 func (c *Client) ProbeMigration(ctx context.Context, src MigrationSource) (*MigrationProbe, error) {
 	var p MigrationProbe
 	return &p, c.postLong(ctx, "/api/v1/migrations/probe", src, &p, MigrationImportTimeout)
 }
 
-// ImportWorkspace starts pulling a workspace from another Miabi into a new workspace on this server.
 func (c *Client) ImportWorkspace(ctx context.Context, body MigrationImport) (*MigrationRun, error) {
 	var r MigrationRun
 	return &r, c.postLong(ctx, "/api/v1/migrations", body, &r, MigrationImportTimeout)
@@ -218,7 +203,6 @@ func (c *Client) MigrationRun(ctx context.Context, id uint) (*MigrationRun, erro
 	return &r, c.get(ctx, fmt.Sprintf("/api/v1/migrations/%d", id), &r)
 }
 
-// WaitForMigrationRun polls every interval until the run ends, reporting each status or phase change.
 func (c *Client) WaitForMigrationRun(ctx context.Context, id uint, every time.Duration, onChange func(*MigrationRun)) (*MigrationRun, error) {
 	last := ""
 	for {

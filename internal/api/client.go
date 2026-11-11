@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package api is a thin wrapper over the Miabi /api/v1 HTTP surface, built on
-// github.com/jkaninda/okapi/client. It unwraps the server's {success,data,error}
-// envelope and maps the structured error to a Go error with a stable code.
+// Package api wraps the Miabi /api/v1 HTTP surface, unwrapping its {success,data,error} envelope.
 package api
 
 import (
@@ -46,7 +44,6 @@ import (
 // Version is stamped at build time (see .goreleaser.yaml); used in User-Agent.
 var Version = "dev"
 
-// Client talks to one panel with one token.
 type Client struct {
 	c       *client.Client
 	stream  *http.Client
@@ -55,8 +52,6 @@ type Client struct {
 	verbose bool
 }
 
-// Options configures a client: the server base URL, bearer token, TLS trust
-// (a custom CA bundle path and/or skip-verify), and verbose HTTP logging.
 type Options struct {
 	BaseURL      string
 	Token        string
@@ -65,9 +60,7 @@ type Options struct {
 	Verbose      bool
 }
 
-// New builds a client from o. It returns an error only when a configured CA
-// bundle cannot be read or parsed — a misconfigured trust root should fail loudly
-// rather than silently fall back to the system roots.
+// New fails on an unreadable CA bundle rather than silently falling back to the system roots.
 func New(o Options) (*Client, error) {
 	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: o.InsecureSkip} //nolint:gosec // opt-in via config
 	if o.CAFile != "" {
@@ -92,8 +85,7 @@ func New(o Options) (*Client, error) {
 		client.WithHTTPClient(httpc),
 		client.WithBearerToken(o.Token),
 		client.WithUserAgent("miabi-cli/" + Version),
-		// Asking for JSON explicitly makes proxies and SSO gateways answer with an
-		// error rather than the HTML sign-in page they hand browsers.
+		// Asking for JSON makes proxies and SSO gateways answer with an error, not their HTML sign-in page.
 		client.WithHeader("Accept", "application/json"),
 		// Safe to retry: every call below is a GET or an idempotent action.
 		client.WithRetry(client.RetryPolicy{MaxAttempts: 3, BaseDelay: 200 * time.Millisecond, MaxDelay: 2 * time.Second}),
@@ -123,7 +115,6 @@ func checkAPIRedirect(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
-// APIError is the server's structured error envelope.
 type APIError struct {
 	StatusCode int    `json:"status_code"`
 	Code       string `json:"code"`
@@ -142,21 +133,18 @@ func (e *APIError) Error() string {
 	return msg
 }
 
-// envelope is the standard response wrapper.
 type envelope struct {
 	Success bool            `json:"success"`
 	Data    json.RawMessage `json:"data"`
 	Error   *APIError       `json:"error"`
 }
 
-// do performs a request and decodes the envelope's data into out (out may be
-// nil). On a non-2xx it returns the server's *APIError when present.
+// do returns the server's *APIError on a non-2xx when the body carries one; out may be nil.
 func (c *Client) do(rb *client.RequestBuilder, out any) error {
 	_, err := c.doResp(rb, out)
 	return err
 }
 
-// doResp is do for callers that also need the response headers.
 func (c *Client) doResp(rb *client.RequestBuilder, out any) (*client.Response, error) {
 	resp, err := rb.Do()
 	if err != nil {
@@ -180,9 +168,7 @@ func (c *Client) doResp(rb *client.RequestBuilder, out any) (*client.Response, e
 	return resp, json.Unmarshal(env.Data, out)
 }
 
-// notAPIResponse explains a body that is not the API's JSON envelope. Every /api
-// route answers JSON, so HTML here was written by something else — a proxy or SSO
-// gateway sign-in page, a WAF interstitial, or a URL that is not the panel at all.
+// Every /api route answers JSON, so an HTML body came from a proxy, SSO gateway, WAF or the wrong host.
 func notAPIResponse(resp *client.Response) error {
 	return fmt.Errorf("%s %s returned HTTP %d, %s — that is not the Miabi API. Check the server URL and that /api/ requests reach the panel untouched (no SSO gateway, WAF, or captive portal in front)",
 		resp.Method, resp.URL, resp.StatusCode, describeBody(resp.Header.Get("Content-Type"), resp.Body))
@@ -190,8 +176,6 @@ func notAPIResponse(resp *client.Response) error {
 
 var titleRe = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 
-// describeBody names a non-JSON body in one clause: its media type plus the HTML
-// <title> (or leading text), which usually identifies whatever answered instead.
 func describeBody(contentType string, body []byte) string {
 	kind, _, _ := strings.Cut(contentType, ";")
 	if kind = strings.TrimSpace(kind); kind == "" {
@@ -224,8 +208,7 @@ func (c *Client) post(ctx context.Context, path string, body, out any) error {
 	return c.do(rb, out)
 }
 
-// postLong is post with a longer deadline, for endpoints that do their work
-// inline instead of handing it to the worker.
+// postLong is for endpoints that do their work inline instead of handing it to the worker.
 func (c *Client) postLong(ctx context.Context, path string, body, out any, timeout time.Duration) error {
 	rb := c.c.Post(path).WithContext(ctx).Timeout(timeout)
 	if body != nil {
@@ -254,17 +237,12 @@ func (c *Client) del(ctx context.Context, path string, out any) error {
 	return c.do(c.c.Delete(path).WithContext(ctx), out)
 }
 
-// === identity & workspaces ===================================
-
 func (c *Client) Me(ctx context.Context) (*Me, error) {
 	var m Me
 	return &m, c.get(ctx, "/api/v1/me", &m)
 }
 
-// ClaimLoginToken exchanges a single-use hand-off code (delivered to the CLI's
-// loopback callback by the browser login flow) for the minted token. The
-// endpoint is public — the code is itself the short-lived, one-time credential —
-// so this works on a client built without a token.
+// ClaimLoginToken is public (the one-time code is the credential), so it works on a client without a token.
 func (c *Client) ClaimLoginToken(ctx context.Context, code string) (*LoginToken, error) {
 	var t LoginToken
 	return &t, c.post(ctx, "/api/v1/auth/login-token/claim", map[string]string{"handoff": code}, &t)
@@ -275,19 +253,13 @@ func (c *Client) Workspaces(ctx context.Context) ([]Workspace, error) {
 	return ws, c.get(ctx, "/api/v1/workspaces", &ws)
 }
 
-// ResolveWorkspaceName turns a user-supplied workspace reference into the
-// canonical name (handle) the API addresses by. ref may be the name, a UID, or a
-// numeric id (resolved to its name for back-compat); an empty ref falls back to
-// fallback (the persisted/bound workspace) and finally to the sole workspace the
-// caller can see. The returned value is always a name, since scoped routes are
-// addressed by name.
+// ResolveWorkspaceName falls back to fallback, then the sole visible workspace; it always returns a name.
 func (c *Client) ResolveWorkspaceName(ctx context.Context, ref, fallback string) (string, error) {
 	if ref == "" {
 		ref = fallback
 	}
 	if ref != "" {
-		// The server resolves a name, UID or id itself, and this also works for a workspace-bound
-		// key, which may not list workspaces.
+		// The server resolves a name, UID or id itself, which also works for a key that cannot list workspaces.
 		w, err := c.Workspace(ctx, ref)
 		if err != nil {
 			var ae *APIError
@@ -315,13 +287,10 @@ func (c *Client) ResolveWorkspaceName(ctx context.Context, ref, fallback string)
 	return "", fmt.Errorf("no workspace selected — pass --workspace, or run `miabi workspace switch <name>`")
 }
 
-// Workspace fetches one workspace by name, UID or id.
 func (c *Client) Workspace(ctx context.Context, ref string) (*Workspace, error) {
 	var w Workspace
 	return &w, c.get(ctx, "/api/v1/workspaces/"+url.PathEscape(ref), &w)
 }
-
-// ======== applications ===================================
 
 func (c *Client) Apps(ctx context.Context, ws string) ([]App, error) {
 	var apps []App
@@ -338,20 +307,14 @@ func (c *Client) CreateApp(ctx context.Context, ws string, req CreateAppRequest)
 	return &a, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps", ws), req, &a)
 }
 
-//  deploy / rollback / releases
-
 // MaxServerWait is the longest ?wait= the server accepts on deploy and rollback.
 const MaxServerWait = 900 * time.Second
 
-// Deploy triggers a deployment. A non-zero wait asks the server to hold the
-// request until the deployment (or pipeline run) settles, up to MaxServerWait.
-// Servers that predate ?wait answer at once, so callers must still check the
-// status and poll when it is not settled.
+// Deploy: a server may answer before the deployment settles despite wait, so callers must still poll.
 func (c *Client) Deploy(ctx context.Context, ws string, app string, req DeployRequest, wait time.Duration) (*DeployResult, error) {
 	return c.deployCall(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/deploy", ws, url.PathEscape(app)), req, wait)
 }
 
-// Rollback rolls back to a release. wait behaves as for Deploy.
 func (c *Client) Rollback(ctx context.Context, ws string, app string, req RollbackRequest, wait time.Duration) (*DeployResult, error) {
 	return c.deployCall(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/rollback", ws, url.PathEscape(app)), req, wait)
 }
@@ -398,55 +361,46 @@ func decodeDeployResult(raw json.RawMessage) (*DeployResult, error) {
 	return &DeployResult{Kind: "deployment", Deployment: &d}, nil
 }
 
-// InvalidateBuildCache names a new build cache generation for the app, so the next build (a deploy
-// or a pipeline run) rebuilds every layer and repopulates it.
 func (c *Client) InvalidateBuildCache(ctx context.Context, ws string, app string) error {
 	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/build-cache/invalidate", ws, url.PathEscape(app)), nil, nil)
 }
 
-// Pipelines lists the workspace's pipeline definitions.
 func (c *Client) Pipelines(ctx context.Context, ws string) ([]Pipeline, error) {
 	var ps []Pipeline
 	return ps, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/pipelines", ws), &ps)
 }
 
-// TriggerPipeline starts a manual run. The pipeline is addressed by numeric id or uid.
+// TriggerPipeline takes the pipeline's numeric id or uid.
 func (c *Client) TriggerPipeline(ctx context.Context, ws, pipeline string, req TriggerPipelineRequest) (*PipelineRun, error) {
 	var r PipelineRun
 	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/pipelines/%s/trigger", ws, pipeline), req, &r)
 }
 
-// PipelineVersioning returns the version policy covering a pipeline's image repository.
 func (c *Client) PipelineVersioning(ctx context.Context, ws, pipeline string) (*VersionPolicy, error) {
 	var p VersionPolicy
 	return &p, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/pipelines/%s/versioning", ws, url.PathEscape(pipeline)), &p)
 }
 
-// UpdateVersionPolicy replaces a policy's settings.
 func (c *Client) UpdateVersionPolicy(ctx context.Context, ws, policy string, s VersionSettings) (*VersionPolicy, error) {
 	var p VersionPolicy
 	return &p, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/versioning/policies/%s", ws, url.PathEscape(policy)), s, &p)
 }
 
-// SwitchVersionSeries moves a semver policy to another version line.
 func (c *Client) SwitchVersionSeries(ctx context.Context, ws, policy, series string) (*VersionPolicy, error) {
 	var p VersionPolicy
 	return &p, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/versioning/policies/%s/switch-series", ws, url.PathEscape(policy)), map[string]string{"series": series}, &p)
 }
 
-// VersionAllocations lists the newest versions a policy handed out.
 func (c *Client) VersionAllocations(ctx context.Context, ws, policy string, size int) ([]VersionAllocation, error) {
 	var out []VersionAllocation
 	return out, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/versioning/policies/%s/allocations?size=%d", ws, url.PathEscape(policy), size), &out)
 }
 
-// RerunPipelineRun re-runs an earlier run at the same ref and commit.
 func (c *Client) RerunPipelineRun(ctx context.Context, ws string, runID uint, req RerunPipelineRequest) (*PipelineRun, error) {
 	var r PipelineRun
 	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/pipeline-runs/%d/rerun", ws, runID), req, &r)
 }
 
-// appAction posts to an app lifecycle sub-path (start|stop|restart).
 func (c *Client) appAction(ctx context.Context, ws string, app string, action string) error {
 	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/%s", ws, url.PathEscape(app), action), nil, nil)
 }
@@ -461,16 +415,12 @@ func (c *Client) RestartApp(ctx context.Context, ws string, app string) error {
 	return c.appAction(ctx, ws, app, "restart")
 }
 
-// SetAppSource replaces where an app's image comes from, including switching between a prebuilt
-// image and a Git build. It is a whole-source replacement: the server clears the fields belonging
-// to the source being left, so a partial request would leave the app describing both.
+// SetAppSource replaces the whole source: the server clears the fields of the source being left.
 func (c *Client) SetAppSource(ctx context.Context, ws string, app string, req SetAppSourceRequest) (*SetAppSourceResult, error) {
 	var r SetAppSourceResult
 	return &r, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/source", ws, url.PathEscape(app)), req, &r)
 }
 
-// ResyncAppPipeline reloads the repository's pipelines.yaml: adopting one when the app has none,
-// and re-syncing the stored spec when it already has one.
 func (c *Client) ResyncAppPipeline(ctx context.Context, ws string, app string) (*ResyncPipelineResult, error) {
 	var r ResyncPipelineResult
 	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/pipeline/resync", ws, url.PathEscape(app)), nil, &r)
@@ -485,8 +435,7 @@ func (c *Client) Deployments(ctx context.Context, ws string, app string) ([]Depl
 	return deps, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/deployments", ws, url.PathEscape(app)), &deps)
 }
 
-// Deployment resolves a single deployment. Servers without the per-deployment
-// GET route answer 404 (or 405), and it is then found within the recent list.
+// Deployment falls back to the recent list when the server lacks the per-deployment GET (404/405).
 func (c *Client) Deployment(ctx context.Context, ws string, app string, depID uint) (*Deployment, error) {
 	var d Deployment
 	err := c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/deployments/%d", ws, url.PathEscape(app), depID), &d)
@@ -509,8 +458,7 @@ func (c *Client) Deployment(ctx context.Context, ws string, app string, depID ui
 	return nil, fmt.Errorf("deployment #%d not found", depID)
 }
 
-// DeploymentByNumber resolves a per-application deployment number (the value
-// users pass) to the full deployment, whose durable ID API paths address by.
+// DeploymentByNumber maps the per-app number users pass to the deployment, whose ID API paths use.
 func (c *Client) DeploymentByNumber(ctx context.Context, ws string, app string, number int) (*Deployment, error) {
 	deps, err := c.Deployments(ctx, ws, app)
 	if err != nil {
@@ -524,8 +472,7 @@ func (c *Client) DeploymentByNumber(ctx context.Context, ws string, app string, 
 	return nil, fmt.Errorf("deployment #%d not found for this app", number)
 }
 
-// ReleaseByVersion resolves a per-application release version to the full
-// release (the ID is what the rollback API expects).
+// ReleaseByVersion resolves a version to the release, since rollback takes the release ID.
 func (c *Client) ReleaseByVersion(ctx context.Context, ws string, app string, version int) (*Release, error) {
 	rels, err := c.Releases(ctx, ws, app)
 	if err != nil {
@@ -544,8 +491,6 @@ func (c *Client) Releases(ctx context.Context, ws string, app string) ([]Release
 	return rs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/releases", ws, url.PathEscape(app)), &rs)
 }
 
-// --- databases -------------------------------------------------------------
-
 func (c *Client) Databases(ctx context.Context, ws string) ([]DatabaseInstance, error) {
 	var dbs []DatabaseInstance
 	return dbs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/databases", ws), &dbs)
@@ -556,7 +501,6 @@ func (c *Client) Database(ctx context.Context, ws string, id uint) (*DatabaseIns
 	return &d, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/databases/%d", ws, id), &d)
 }
 
-// ResolveDatabaseID turns a database handle (or numeric id) into the numeric id.
 func (c *Client) ResolveDatabaseID(ctx context.Context, ws, ref string) (uint, error) {
 	if id, err := strconv.ParseUint(ref, 10, 64); err == nil {
 		return uint(id), nil
@@ -583,7 +527,6 @@ func (c *Client) CreateDatabase(ctx context.Context, ws string, req CreateDataba
 	return &d, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/databases", ws), req, &d)
 }
 
-// dbAction posts to a lifecycle sub-path (start|stop|restart) that returns a message.
 func (c *Client) dbAction(ctx context.Context, ws string, id uint, action string) error {
 	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/databases/%d/%s", ws, id, action), nil, nil)
 }
@@ -612,20 +555,16 @@ func (c *Client) UpgradeDatabase(ctx context.Context, ws string, id uint, req Up
 	return &d, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/databases/%d/upgrade", ws, id), req, &d)
 }
 
-// Logical databases hosted on an instance.
-
 func (c *Client) LogicalDatabases(ctx context.Context, ws string, id uint) ([]LogicalDatabase, error) {
 	var dbs []LogicalDatabase
 	return dbs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/databases/%d/databases", ws, id), &dbs)
 }
 
-// AppDatabases lists the databases linked to an app.
 func (c *Client) AppDatabases(ctx context.Context, ws string, app string) ([]AppDatabase, error) {
 	var dbs []AppDatabase
 	return dbs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/databases", ws, url.PathEscape(app)), &dbs)
 }
 
-// AttachDatabase links a logical database to an app and injects its connection.
 func (c *Client) AttachDatabase(ctx context.Context, ws string, app string, dbID uint, req LinkDatabaseRequest) (*LinkDatabaseResult, error) {
 	var r LinkDatabaseResult
 	return &r, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/databases/%d", ws, url.PathEscape(app), dbID), req, &r)
@@ -635,7 +574,6 @@ func (c *Client) DetachDatabase(ctx context.Context, ws string, app string, dbID
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/databases/%d", ws, url.PathEscape(app), dbID), nil)
 }
 
-// LinkDatabaseInstance links a whole instance (Redis) to an app.
 func (c *Client) LinkDatabaseInstance(ctx context.Context, ws string, app string, instID uint, req LinkDatabaseRequest) (*LinkDatabaseResult, error) {
 	var r LinkDatabaseResult
 	return &r, c.put(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/database-instances/%d", ws, url.PathEscape(app), instID), req, &r)
@@ -659,10 +597,7 @@ func (c *Client) DeleteLogicalDatabase(ctx context.Context, ws string, id, dbID 
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/databases/%d/databases/%d", ws, id, dbID), nil)
 }
 
-//  env
-
-// EnvVars lists an application's environment variables. Secret values come back
-// masked — the API never returns them in plaintext.
+// EnvVars returns secret values masked; the API never returns them in plaintext.
 func (c *Client) EnvVars(ctx context.Context, ws string, app string) ([]EnvVar, error) {
 	var vars []EnvVar
 	return vars, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/env", ws, url.PathEscape(app)), &vars)
@@ -676,9 +611,7 @@ func (c *Client) ImportEnv(ctx context.Context, ws string, app string, req Impor
 	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/env/import", ws, url.PathEscape(app)), req, nil)
 }
 
-// --- configs (workspace configuration files) -------------------------------
-
-// Configs lists a workspace's configs (keys and digests, never content).
+// Configs returns keys and digests only, never content.
 func (c *Client) Configs(ctx context.Context, ws string) ([]Config, error) {
 	var cfgs []Config
 	return cfgs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/configs?page=0&size=500", ws), &cfgs)
@@ -717,8 +650,7 @@ func (c *Client) DeleteConfig(ctx context.Context, ws string, id uint) error {
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/configs/%d", ws, id), nil)
 }
 
-// FindConfigByName returns the named config, or nil when none exists (used by
-// `set` to choose between create and replace).
+// FindConfigByName returns nil, not an error, when no config has that name.
 func (c *Client) FindConfigByName(ctx context.Context, ws, name string) (*Config, error) {
 	cfgs, err := c.Configs(ctx, ws)
 	if err != nil {
@@ -732,7 +664,6 @@ func (c *Client) FindConfigByName(ctx context.Context, ws, name string) (*Config
 	return nil, nil
 }
 
-// ResolveConfigID turns a config name (or numeric id) into its numeric id.
 func (c *Client) ResolveConfigID(ctx context.Context, ws, ref string) (uint, error) {
 	if id, err := strconv.ParseUint(ref, 10, 64); err == nil {
 		return uint(id), nil
@@ -747,17 +678,13 @@ func (c *Client) ResolveConfigID(ctx context.Context, ws, ref string) (uint, err
 	return cfg.ID, nil
 }
 
-// --- volumes (persistent storage) -------------------------------------------
-
-// Volumes lists a workspace's managed volumes. The endpoint is not paginated.
+// Volumes fetches every volume at once; the endpoint is not paginated.
 func (c *Client) Volumes(ctx context.Context, ws string) ([]Volume, error) {
 	var vols []Volume
 	return vols, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes", ws), &vols)
 }
 
-// Volume returns one volume with its live Docker state and the apps mounting it.
-// The id must be numeric: unlike the file routes, this endpoint does not accept
-// a name or a UID — resolve with ResolveVolumeID first.
+// Volume takes a numeric id only, unlike the file routes; resolve names with ResolveVolumeID.
 func (c *Client) Volume(ctx context.Context, ws string, id uint) (*VolumeDetail, error) {
 	var v VolumeDetail
 	return &v, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d", ws, id), &v)
@@ -768,13 +695,11 @@ func (c *Client) CreateVolume(ctx context.Context, ws string, req CreateVolumeRe
 	return &v, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes", ws), req, &v)
 }
 
-// DeleteVolume destroys a volume and its data. The server answers 409 while an
-// application still mounts it.
+// DeleteVolume fails with 409 while an application still mounts the volume.
 func (c *Client) DeleteVolume(ctx context.Context, ws string, id uint) error {
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d", ws, id), nil)
 }
 
-// WorkspaceStorage returns the workspace's declared-vs-measured storage totals.
 func (c *Client) WorkspaceStorage(ctx context.Context, ws string) (*WorkspaceStorage, error) {
 	var s WorkspaceStorage
 	return &s, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/storage", ws), &s)
@@ -794,7 +719,6 @@ func (c *Client) FindVolumeByName(ctx context.Context, ws, name string) (*Volume
 	return nil, nil
 }
 
-// ResolveVolumeID turns a volume name (or numeric id) into its numeric id.
 func (c *Client) ResolveVolumeID(ctx context.Context, ws, ref string) (uint, error) {
 	if id, err := strconv.ParseUint(ref, 10, 64); err == nil {
 		return uint(id), nil
@@ -809,42 +733,31 @@ func (c *Client) ResolveVolumeID(ctx context.Context, ws, ref string) (uint, err
 	return v.ID, nil
 }
 
-// AttachVolume mounts a volume into an application at path. It flags the app as
-// needing a redeploy; it does not restart it.
+// AttachVolume only flags the app for a redeploy; it does not restart it.
 func (c *Client) AttachVolume(ctx context.Context, ws string, app string, req AttachVolumeRequest) error {
 	return c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/volumes", ws, url.PathEscape(app)), req, nil)
 }
 
-// DetachVolume unmounts a volume from an application (the data is kept).
+// DetachVolume keeps the volume's data.
 func (c *Client) DetachVolume(ctx context.Context, ws string, app string, volumeID uint) error {
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apps/%s/volumes/%d", ws, url.PathEscape(app), volumeID), nil)
 }
 
-// --- volume files ------------------------------------------------------------
-
-// FileTransferTimeout bounds one volume file upload or download. The default
-// 30s client timeout covers control-plane calls; moving a multi-hundred-MB file
-// over a slow link is a different order of magnitude.
+// FileTransferTimeout replaces the 30s control-plane timeout, too short for large files on slow links.
 const FileTransferTimeout = 30 * time.Minute
 
-// MaxVolumeUploadBytes mirrors the panel's per-file upload cap, so an oversized
-// file fails before it is read and sent rather than after.
+// MaxVolumeUploadBytes mirrors the panel's cap so an oversized file fails before it is sent.
 const MaxVolumeUploadBytes = 512 << 20
 
-// MaxListedVolumeFiles mirrors the panel's listing cap. It is not reported in the
-// payload, so a listing sitting exactly on it is the only signal that entries were
-// dropped.
+// MaxListedVolumeFiles mirrors the panel's unreported listing cap; a listing this long may be truncated.
 const MaxListedVolumeFiles = 5000
 
-// VolumeFiles lists a volume's contents recursively, relative to its root. The
-// panel caps the listing at 5000 entries.
 func (c *Client) VolumeFiles(ctx context.Context, ws string, id uint) ([]VolumeFile, error) {
 	var files []VolumeFile
 	return files, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files", ws, id), &files)
 }
 
-// UploadVolumeFile lands content in a volume as subdir/name (subdir may be
-// empty) and returns the path it was written to. It overwrites an existing file.
+// UploadVolumeFile overwrites an existing file; subdir may be empty.
 func (c *Client) UploadVolumeFile(ctx context.Context, ws string, id uint, subdir, name string, content io.Reader) (string, error) {
 	var out VolumeUploadResult
 	rb := c.c.Post(fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files", ws, id)).
@@ -869,10 +782,7 @@ func (c *Client) UploadVolumeFile(ctx context.Context, ws string, id uint, subdi
 	return out.Path, nil
 }
 
-// DownloadVolumeFile copies one file out of a volume into dst and returns the
-// number of bytes written. It streams: a volume file can be as large as the
-// panel's 512 MiB cap, and holding that in memory to hand it straight to a file
-// on disk is the kind of thing that gets a CLI OOM-killed on a small box.
+// DownloadVolumeFile streams so a file up to the panel's 512 MiB cap is never held in memory.
 func (c *Client) DownloadVolumeFile(ctx context.Context, ws string, id uint, path string, dst io.Writer) (int64, error) {
 	body, err := c.streamRaw(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files/download?path=%s", ws, id, url.QueryEscape(path)))
 	if err != nil {
@@ -882,21 +792,15 @@ func (c *Client) DownloadVolumeFile(ctx context.Context, ws string, id uint, pat
 	return io.Copy(dst, body)
 }
 
-// DeleteVolumeFile removes a file, or a directory and everything under it.
+// DeleteVolumeFile is recursive for directories.
 func (c *Client) DeleteVolumeFile(ctx context.Context, ws string, id uint, path string) error {
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/files?path=%s", ws, id, url.QueryEscape(path)), nil)
 }
 
-// errorBodyLimit caps how much of a failed or unexpected response is read to
-// build the error message. It is a title or an API error, not a file.
+// errorBodyLimit bounds the read of a failed response: it is a title or an API error, not a file.
 const errorBodyLimit = 64 << 10
 
-// streamRaw issues a GET and hands back the response body still open, so the
-// caller decides where the bytes go. It reproduces getRaw's checks — the API's
-// error envelope, and an HTML page answered with 200 — before handing over,
-// because both have to be recognised while the body is still ours to read.
-//
-// Closing the returned reader releases the request's deadline.
+// streamRaw vets the envelope and HTML before returning the open body; closing it releases the deadline.
 func (c *Client) streamRaw(ctx context.Context, path string) (io.ReadCloser, error) {
 	ctx, cancel := context.WithTimeout(ctx, FileTransferTimeout)
 	fail := func(err error) (io.ReadCloser, error) {
@@ -912,8 +816,7 @@ func (c *Client) streamRaw(ctx context.Context, path string) (io.ReadCloser, err
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	req.Header.Set("User-Agent", "miabi-cli/"+Version)
-	// Same Accept as every other call: it makes an SSO gateway or WAF answer with
-	// an error document rather than the HTML sign-in page it hands browsers.
+	// Same Accept as other calls, so an SSO gateway or WAF answers with an error, not a sign-in page.
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.stream.Do(req)
@@ -924,8 +827,6 @@ func (c *Client) streamRaw(ctx context.Context, path string) (io.ReadCloser, err
 		fmt.Fprintf(os.Stderr, "GET %s -> %s\n", req.URL, resp.Status)
 	}
 
-	// A body read for diagnosis, not for the caller: bounded, and the response is
-	// finished with either way.
 	reject := func() ([]byte, *client.Response) {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, errorBodyLimit))
 		_ = resp.Body.Close()
@@ -943,9 +844,7 @@ func (c *Client) streamRaw(ctx context.Context, path string) (io.ReadCloser, err
 		}
 		return fail(notAPIResponse(cr))
 	}
-	// The download handler always answers application/octet-stream. HTML here is a
-	// sign-in page or interstitial that would otherwise be written to disk as if it
-	// were the file.
+	// The download handler always answers octet-stream; HTML here is a sign-in page, not the file.
 	if kind, _, _ := strings.Cut(resp.Header.Get("Content-Type"), ";"); strings.TrimSpace(kind) == "text/html" {
 		_, cr := reject()
 		return fail(notAPIResponse(cr))
@@ -953,9 +852,7 @@ func (c *Client) streamRaw(ctx context.Context, path string) (io.ReadCloser, err
 	return &cancelOnClose{ReadCloser: resp.Body, cancel: cancel}, nil
 }
 
-// cancelOnClose ties the request's context to the body's lifetime: the deadline
-// has to outlive streamRaw, and cancelling it is what stops a stalled transfer
-// from holding the connection open.
+// cancelOnClose keeps the deadline alive past streamRaw; cancelling it is what frees a stalled transfer.
 type cancelOnClose struct {
 	io.ReadCloser
 	cancel context.CancelFunc
@@ -967,9 +864,7 @@ func (c *cancelOnClose) Close() error {
 	return err
 }
 
-// getRaw fetches a body the API serves verbatim, buffered, for the small ones —
-// a backup run's log. A failure still answers the envelope, so errors are decoded
-// the usual way. Use streamRaw for anything that can be large.
+// getRaw buffers the body; use streamRaw for anything that can be large.
 func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
 	resp, err := c.c.Get(path).WithContext(ctx).Timeout(FileTransferTimeout).Do()
 	if err != nil {
@@ -985,46 +880,34 @@ func (c *Client) getRaw(ctx context.Context, path string) ([]byte, error) {
 		}
 		return nil, notAPIResponse(resp)
 	}
-	// The download handler always answers application/octet-stream. HTML here is
-	// a sign-in page or interstitial that would otherwise be written to disk as
-	// if it were the file.
+	// The download handler always answers octet-stream; HTML here is a sign-in page, not the file.
 	if kind, _, _ := strings.Cut(resp.Header.Get("Content-Type"), ";"); strings.TrimSpace(kind) == "text/html" {
 		return nil, notAPIResponse(resp)
 	}
 	return resp.Body, nil
 }
 
-// --- volume backups (S3) -----------------------------------------------------
-
-// RestoreTimeout bounds a restore. The panel runs the restore inline in the
-// request — it pulls an image and unpacks an archive before answering — so the
-// 30s control-plane deadline would abort a restore that is going fine.
+// RestoreTimeout exceeds the 30s default because the panel restores inline before answering.
 const RestoreTimeout = 60 * time.Minute
 
-// VolumeBackups lists a volume's backup history, newest first as the panel
-// returns it.
 func (c *Client) VolumeBackups(ctx context.Context, ws string, id uint) ([]VolumeBackup, error) {
 	var bs []VolumeBackup
 	return bs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups", ws, id), &bs)
 }
 
-// VolumeBackupConfigured reports whether the workspace has an S3 target, which
-// volume backups require.
 func (c *Client) VolumeBackupConfigured(ctx context.Context, ws string, id uint) (bool, error) {
 	var st VolumeBackupStatus
 	err := c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/status", ws, id), &st)
 	return st.S3Configured, err
 }
 
-// RunVolumeBackup enqueues a backup and returns the pending record. The work
-// happens in the panel's worker, so the record is not finished when this returns.
+// RunVolumeBackup only enqueues: the returned record is pending, not finished.
 func (c *Client) RunVolumeBackup(ctx context.Context, ws string, id uint) (*VolumeBackup, error) {
 	var b VolumeBackup
 	return &b, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups", ws, id), nil, &b)
 }
 
-// RestoreVolumeBackup overwrites a volume's contents from one of its backups.
-// The call blocks for the whole restore.
+// RestoreVolumeBackup overwrites the volume and blocks for the whole restore.
 func (c *Client) RestoreVolumeBackup(ctx context.Context, ws string, id, backupID uint) error {
 	return c.postLong(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d/restore", ws, id, backupID), nil, nil, RestoreTimeout)
 }
@@ -1033,28 +916,23 @@ func (c *Client) DeleteVolumeBackup(ctx context.Context, ws string, id, backupID
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d", ws, id, backupID), nil)
 }
 
-// VerifyVolumeBackup re-checks a completed backup against the bucket: present, the size it was
-// stored at, and for a sealed recovery point, still openable with the workspace passphrase.
+// VerifyVolumeBackup checks presence, size and, for a sealed recovery point, that the passphrase opens it.
 func (c *Client) VerifyVolumeBackup(ctx context.Context, ws string, id, backupID uint) (*VerifyResult, error) {
 	var r VerifyResult
 	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d/verify", ws, id, backupID), nil, &r)
 }
 
-// PinVolumeBackup exempts a recovery point from retention, or lifts the exemption.
 func (c *Client) PinVolumeBackup(ctx context.Context, ws string, id, backupID uint, pinned bool) (*VolumeBackup, error) {
 	var b VolumeBackup
 	return &b, c.patch(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d", ws, id, backupID),
 		map[string]bool{"pinned": pinned}, &b)
 }
 
-// VolumeBackupLogs downloads a run's full log, which the panel serves as a file
-// rather than in the envelope.
 func (c *Client) VolumeBackupLogs(ctx context.Context, ws string, id, backupID uint) ([]byte, error) {
 	return c.getRaw(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d/logs/download", ws, id, backupID))
 }
 
-// FindVolumeBackup returns one backup from the volume's history. There is no
-// single-backup endpoint, so this filters the list.
+// FindVolumeBackup filters the history because there is no single-backup endpoint.
 func (c *Client) FindVolumeBackup(ctx context.Context, ws string, id, backupID uint) (*VolumeBackup, error) {
 	bs, err := c.VolumeBackups(ctx, ws, id)
 	if err != nil {
@@ -1068,11 +946,9 @@ func (c *Client) FindVolumeBackup(ctx context.Context, ws string, id, backupID u
 	return nil, fmt.Errorf("backup %d not found for this volume", backupID)
 }
 
-// volumeBackupPollInterval is how often --wait re-reads the history. A variable
-// so the tests do not have to sleep through real backoff.
+// volumeBackupPollInterval is a variable so tests do not sleep through real backoff.
 var volumeBackupPollInterval = 3 * time.Second
 
-// WaitForVolumeBackup polls until the run settles, reporting each status change.
 func (c *Client) WaitForVolumeBackup(ctx context.Context, ws string, id, backupID uint, onUpdate func(status string)) (*VolumeBackup, error) {
 	ticker := time.NewTicker(volumeBackupPollInterval)
 	defer ticker.Stop()
@@ -1099,16 +975,12 @@ func (c *Client) WaitForVolumeBackup(ctx context.Context, ws string, id, backupI
 	}
 }
 
-//  secrets (workspace Vault)
-
-// Secrets lists a workspace's secrets (names + metadata, never values). The list
-// endpoint is paginated; a large page size fetches them in one call.
+// Secrets asks for a large page so the paginated list arrives in one call; values never come back.
 func (c *Client) Secrets(ctx context.Context, ws string) ([]Secret, error) {
 	var s []Secret
 	return s, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/secrets?page=0&size=500", ws), &s)
 }
 
-// SealingKey returns the workspace's active public sealing key.
 func (c *Client) SealingKey(ctx context.Context, ws string) (*SealingKey, error) {
 	var k SealingKey
 	return &k, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/sealing-key", ws), &k)
@@ -1142,8 +1014,7 @@ func (c *Client) DeleteSecret(ctx context.Context, ws string, id uint) error {
 	return c.del(ctx, fmt.Sprintf("/api/v1/workspaces/%s/secrets/%d", ws, id), nil)
 }
 
-// FindSecretByName returns the workspace secret with the given name, or nil when
-// none exists (used by `set` to choose between create and rotate).
+// FindSecretByName returns nil, not an error, when no secret has that name.
 func (c *Client) FindSecretByName(ctx context.Context, ws, name string) (*Secret, error) {
 	secrets, err := c.Secrets(ctx, ws)
 	if err != nil {
@@ -1157,7 +1028,6 @@ func (c *Client) FindSecretByName(ctx context.Context, ws, name string) (*Secret
 	return nil, nil
 }
 
-// ResolveSecretID turns a secret name (or numeric id) into its numeric id.
 func (c *Client) ResolveSecretID(ctx context.Context, ws, ref string) (uint, error) {
 	if id, err := strconv.ParseUint(ref, 10, 64); err == nil {
 		return uint(id), nil
@@ -1172,23 +1042,18 @@ func (c *Client) ResolveSecretID(ctx context.Context, ws, ref string) (uint, err
 	return s.ID, nil
 }
 
-// ========= declarative apply ===================================
-
-// PlanApply previews converging the workspace to the manifest bundle (dry-run).
 func (c *Client) PlanApply(ctx context.Context, ws string, manifests string, prune, force bool) (*Plan, error) {
 	var p Plan
 	req := ApplyRequest{Manifests: manifests, Prune: prune, Force: force, DryRun: true}
 	return &p, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apply", ws), req, &p)
 }
 
-// Apply converges the workspace to the manifest bundle.
 func (c *Client) Apply(ctx context.Context, ws string, manifests string, prune, force bool) (*ApplyResult, error) {
 	var r ApplyResult
 	req := ApplyRequest{Manifests: manifests, Prune: prune, Force: force, DryRun: false}
 	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apply", ws), req, &r)
 }
 
-// PlanDelete previews deleting exactly the resources the bundle names (dry-run).
 func (c *Client) PlanDelete(ctx context.Context, ws string, manifests string) (*Plan, error) {
 	var p Plan
 	req := ApplyRequest{Manifests: manifests, Delete: true, DryRun: true}
@@ -1202,13 +1067,10 @@ func (c *Client) Delete(ctx context.Context, ws string, manifests string) (*Appl
 	return &r, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/apply", ws), req, &r)
 }
 
-// deployPollInterval is how often the wait loops re-read state. A variable so the
-// tests do not have to sleep through it.
+// deployPollInterval is a variable so tests do not sleep through it.
 var deployPollInterval = 2 * time.Second
 
-// WaitForDeploy polls a deployment until it settles (terminal, or a canary
-// awaiting promotion) or the context is cancelled/times out, calling onUpdate
-// (if non-nil) on each status change. It returns the final deployment.
+// WaitForDeploy also stops on a canary awaiting promotion, which will not move on its own.
 func (c *Client) WaitForDeploy(ctx context.Context, ws string, app string, depID uint, onUpdate func(status string)) (*Deployment, error) {
 	ticker := time.NewTicker(deployPollInterval)
 	defer ticker.Stop()
@@ -1235,13 +1097,11 @@ func (c *Client) WaitForDeploy(ctx context.Context, ws string, app string, depID
 	}
 }
 
-// PipelineRun returns one pipeline run.
 func (c *Client) PipelineRun(ctx context.Context, ws string, runID uint) (*PipelineRun, error) {
 	var r PipelineRun
 	return &r, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/pipeline-runs/%d", ws, runID), &r)
 }
 
-// WaitForPipelineRun polls a run until it settles, reporting each status change.
 func (c *Client) WaitForPipelineRun(ctx context.Context, ws string, runID uint, onUpdate func(status string)) (*PipelineRun, error) {
 	ticker := time.NewTicker(deployPollInterval)
 	defer ticker.Stop()

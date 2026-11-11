@@ -40,7 +40,6 @@ const maxMigrationTTL = 168 * time.Hour
 
 var migrationPoll = 3 * time.Second
 
-// importFlags are the options `workspace migrate` and `workspace import` share.
 type importFlags struct {
 	newName     string
 	noData      bool
@@ -467,8 +466,7 @@ func migratePrompt(ws, from, to string, o *importFlags) string {
 	return b.String() + "?"
 }
 
-// pickSourceWorkspace is the workspace to import: want, else the one the code was started for, else
-// the only one an instance code opens.
+// pickSourceWorkspace falls back to the code's own workspace, then the only one an instance code opens.
 func pickSourceWorkspace(p *api.MigrationProbe, want string) (*api.MigrationWorkspace, error) {
 	names := make([]string, 0, len(p.Workspaces))
 	for _, w := range p.Workspaces {
@@ -601,8 +599,7 @@ func stdinIsTerminal() bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// followMigrationRun waits for run to end, printing each phase. It returns the run as last seen; with
-// --no-wait that is the run as started.
+// With --no-wait, followMigrationRun returns the run as started.
 func followMigrationRun(ctx context.Context, c *api.Client, run *api.MigrationRun, o *importFlags, target string) (*api.MigrationRun, error) {
 	on := ""
 	if target != "" {
@@ -627,8 +624,7 @@ func followMigrationRun(ctx context.Context, c *api.Client, run *api.MigrationRu
 	})
 }
 
-// reportMigrationRun prints how a migration ended and fails the command when it failed, which is what a
-// script wants to know. A partial run created the workspace, so it warns rather than fails.
+// A partial run created the workspace, so reportMigrationRun warns rather than fails.
 func reportMigrationRun(r *api.MigrationRun, workspace, sourceCtx string) error {
 	if structured() {
 		if err := emit(r); err != nil {
@@ -704,8 +700,7 @@ var wsUnfreezeCmd = &cobra.Command{
 	},
 }
 
-// contextClient connects to a saved context by name with its own server, token and TLS trust. The
-// global connection flags and MIABI_* env describe a single server, so they do not apply here.
+// The global connection flags and MIABI_* env describe one server, so contextClient ignores them.
 func contextClient(f *config.File, name string) (*api.Client, *config.Effective, error) {
 	c := f.Contexts[name]
 	if c == nil {
@@ -728,8 +723,7 @@ func contextClient(f *config.File, name string) (*api.Client, *config.Effective,
 	return cl, eff, nil
 }
 
-// requireMigration fails early, before a migration starts or a workspace is created, when a server
-// does not have workspace migration on.
+// requireMigration fails before a migration starts or a workspace is created.
 func requireMigration(ctx context.Context, c *api.Client, name string) error {
 	s, err := c.MigrationStatus(ctx)
 	if err != nil {

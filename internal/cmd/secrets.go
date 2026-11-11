@@ -195,8 +195,7 @@ var secretSetCmd = &cobra.Command{
 			if !hasValue && !descChanged {
 				return fmt.Errorf("nothing to change: pass a new value (--value/--from-file) or --description")
 			}
-			// Blank value keeps the stored value; preserve the description unless the
-			// flag was explicitly set.
+			// A blank value keeps the stored one; keep the description unless the flag was explicitly set.
 			desc := existing.Description
 			if descChanged {
 				desc = secretDesc
@@ -319,8 +318,7 @@ var secretRmCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		// Managed secrets are owned by a platform resource and are removed with
-		// their owner — refuse the hand delete (the server enforces this too).
+		// Managed secrets are removed with their owner, so refuse the hand delete (the server enforces this too).
 		if s.Managed {
 			return fmt.Errorf("secret %q is managed by a platform resource; delete its owner instead", s.Name)
 		}
@@ -338,9 +336,7 @@ var secretRmCmd = &cobra.Command{
 	},
 }
 
-// readSecretValue resolves the secret value from --value, --from-file (with "-"
-// meaning stdin), or piped stdin. It returns (value, provided, error); provided
-// is false when no value source was given (a description-only edit).
+// readSecretValue reports provided=false when no value source was given (a description-only edit).
 func readSecretValue() (string, bool, error) {
 	if secretValue != "" {
 		return secretValue, true, nil
@@ -365,8 +361,6 @@ func readSecretValue() (string, bool, error) {
 	return "", false, nil
 }
 
-// fmtTimestamp renders an absolute local time with a relative age suffix, e.g.
-// "2026-07-03 15:04 (2 days ago)".
 func fmtTimestamp(t time.Time) string {
 	if t.IsZero() {
 		return "-"
@@ -378,8 +372,6 @@ func fmtTimestamp(t time.Time) string {
 	return fmt.Sprintf("%s %s", t.Local().Format("2006-01-02 15:04"), ui.Dim("("+age+")"))
 }
 
-// findSecret resolves a secret by name (or numeric id) to its full record,
-// erroring when none matches in the workspace.
 func findSecret(ctx context.Context, c *api.Client, ws, ref string) (*api.Secret, error) {
 	secrets, err := c.Secrets(ctx, ws)
 	if err != nil {
@@ -393,7 +385,6 @@ func findSecret(ctx context.Context, c *api.Client, ws, ref string) (*api.Secret
 	return nil, fmt.Errorf("secret %q not found in this workspace", ref)
 }
 
-// completeSecrets tab-completes secret handles in the active workspace.
 func completeSecrets(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp

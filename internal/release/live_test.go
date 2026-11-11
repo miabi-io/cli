@@ -24,8 +24,7 @@ import (
 	"testing"
 )
 
-// TestLatestLive hits versions.miabi.io (or GitHub as the fallback). Skipped in -short so CI and offline work stay green;
-// run with `go test ./internal/release -run Live -v` to check the contract against production.
+// Hits the real versions.miabi.io, so it is skipped in -short to keep CI and offline work green.
 func TestLatestLive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network test")

@@ -73,8 +73,7 @@ var volLsFilesCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		// Truncation is a property of what the panel sent, not of what --path keeps:
-		// measuring it after the filter hides it for every filtered listing.
+		// Truncation is a property of what the panel sent; measuring it after the --path filter would hide it.
 		truncated := len(all) >= api.MaxListedVolumeFiles
 		files := filterFiles(all, volFilePath)
 		sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
@@ -178,7 +177,6 @@ var volRmFileCmd = &cobra.Command{
 	},
 }
 
-// downloadFromVolume writes one file out of a volume to dst ("-" is stdout).
 func downloadFromVolume(ctx context.Context, volRef, remotePath, dst string) error {
 	remotePath = strings.TrimPrefix(remotePath, "/")
 	if remotePath == "" {
@@ -188,8 +186,7 @@ func downloadFromVolume(ctx context.Context, volRef, remotePath, dst string) err
 	if err != nil {
 		return err
 	}
-	// Resolve the destination before the transfer: a name collision should fail
-	// before spending minutes pulling the bytes down.
+	// Resolve the destination first so a name collision fails before minutes of transfer.
 	local := dst
 	if local != "-" {
 		if info, serr := os.Stat(local); serr == nil {
@@ -233,8 +230,7 @@ func downloadFromVolume(ctx context.Context, volRef, remotePath, dst string) err
 	return nil
 }
 
-// uploadToVolume sends a local file ("-" is stdin) into a volume. The remote
-// path names the destination file, whose directory is created as needed.
+// uploadToVolume creates the remote file's parent directories as needed.
 func uploadToVolume(ctx context.Context, src, volRef, remotePath string) error {
 	remotePath = strings.TrimPrefix(remotePath, "/")
 	if remotePath == "" || strings.HasSuffix(remotePath, "/") {
@@ -290,12 +286,10 @@ func uploadToVolume(ctx context.Context, src, volRef, remotePath string) error {
 	return nil
 }
 
-// readAllStdin reads stdin verbatim. Unlike readFileOrStdin it keeps the
-// trailing newline: a volume file is copied byte for byte, text or not.
+// Unlike readFileOrStdin, readAllStdin keeps the trailing newline: volume files are copied byte for byte.
 func readAllStdin() ([]byte, error) { return io.ReadAll(os.Stdin) }
 
-// splitVolumeRef splits a "<volume>:<path>" argument. A single-letter prefix is
-// a Windows drive, not a volume, so "C:\src" stays a local path.
+// A single-letter prefix is a Windows drive, not a volume, so "C:\src" stays a local path.
 func splitVolumeRef(arg string) (vol, p string, remote bool) {
 	head, tail, ok := strings.Cut(arg, ":")
 	if !ok || head == "" {
@@ -326,7 +320,6 @@ func filterFiles(files []api.VolumeFile, dir string) []api.VolumeFile {
 	return out
 }
 
-// countUnder counts the entries a recursive delete of dir would take with it.
 func countUnder(files []api.VolumeFile, dir string) int {
 	dir = strings.Trim(dir, "/")
 	n := 0
@@ -355,8 +348,7 @@ func fileSizeCell(f api.VolumeFile) string {
 	return humanBytes(f.Size)
 }
 
-// fileAgeCell renders the mtime the helper reported. A zero epoch means the
-// helper could not stat it, which is not "1970".
+// A zero epoch means the helper could not stat the file, which is not "1970".
 func fileAgeCell(f api.VolumeFile) string {
 	if f.ModTime <= 0 {
 		return "-"
@@ -368,7 +360,6 @@ func fileAgeCell(f api.VolumeFile) string {
 	return age
 }
 
-// completeVolumeFiles completes the volume name, then its file paths.
 func completeVolumeFiles(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) == 0 {
 		return completeVolumes(nil, args, toComplete)

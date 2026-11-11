@@ -25,7 +25,7 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack/docker"
 )
 
-// The stack asks for IPv6 explicitly; dropping the flag left `miabi setup --ipv6` creating IPv4-only networks.
+// Without EnableIPv6 on the create options, `miabi setup --ipv6` would create IPv4-only networks.
 func TestCreateNetworkOptionsCarriesIPv6(t *testing.T) {
 	on := true
 	opts, err := createNetworkOptions(docker.NetworkSpec{

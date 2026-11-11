@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package host manages the Miabi stack on the machine the CLI runs on, as opposed to talking to a
-// panel over HTTP. It is the CLI's half of the platform-stack engine: everything Docker-specific
-// lives behind Open, which is stubbed out on platforms that cannot host a stack.
+// Package host keeps everything Docker-specific behind Open, stubbed on platforms that cannot host a stack.
 package host
 
 import (
@@ -32,18 +30,14 @@ import (
 	"github.com/miabi-io/miabi/pkg/stack"
 )
 
-// ErrUnsupported is returned by Open on a platform with no Docker host to manage.
 var ErrUnsupported = errors.New("stack management requires a Linux or macOS host with Docker")
 
-// Session is an open connection to the local Docker engine plus the stack service driving it.
-// Close releases the connection.
 type Session struct {
 	Svc      *stack.Service
 	Manifest string
 	closer   func() error
 }
 
-// Close releases the Docker connection.
 func (s *Session) Close() error {
 	if s == nil || s.closer == nil {
 		return nil
@@ -51,8 +45,6 @@ func (s *Session) Close() error {
 	return s.closer()
 }
 
-// ManifestPath resolves the manifest to operate on: the --file flag if given, else the platform
-// default (see [stack.ManifestPath]).
 func ManifestPath(flag string) string {
 	if p := strings.TrimSpace(flag); p != "" {
 		return p
@@ -60,8 +52,7 @@ func ManifestPath(flag string) string {
 	return stack.ManifestPath()
 }
 
-// RequireWritable fails early when this process cannot write the manifest, rather than surfacing a
-// permission error from three layers down.
+// RequireWritable fails early rather than surfacing a permission error from three layers down.
 func RequireWritable(path string) error {
 	dir := filepath.Dir(path)
 	if writable(dir) {
@@ -76,9 +67,7 @@ func RequireWritable(path string) error {
 		"    miabi setup --file %s --domain …", path, userPathHint())
 }
 
-// RequireReadable fails early when the manifest exists but this process cannot read it. The file is
-// mode 0600 because it holds the database password, so "you are not the owner" is the likely reason
-// and is worth saying outright.
+// RequireReadable names ownership outright: the manifest is mode 0600 because it holds the DB password.
 func RequireReadable(path string) error {
 	f, err := os.Open(path)
 	if err == nil {
@@ -92,11 +81,7 @@ func RequireReadable(path string) error {
 		"  Re-run with sudo, or point at your own install:  --file %s", path, userPathHint())
 }
 
-// OtherInstall returns a manifest that exists somewhere other than path, or "" when there is none.
-//
-// Two installs on one host are not two installs: they converge the same container, volume and
-// network names against the same Docker daemon, and the second one adopts and then fights over the
-// first one's containers. Better to refuse than to discover it as a restart loop.
+// OtherInstall exists because two installs on one daemon fight over the same container, volume and network names.
 func OtherInstall(path string) string {
 	for _, p := range []string{stack.DefaultConfigPath, UserManifestPath()} {
 		if p == "" || p == path {
@@ -109,8 +94,7 @@ func OtherInstall(path string) string {
 	return ""
 }
 
-// writable reports whether a directory can be written by this process. It tries rather than
-// reasoning about modes and group membership, which is the only answer that is never wrong.
+// writable tries a write rather than reasoning about modes and groups, the only answer that is never wrong.
 func writable(dir string) bool {
 	f, err := os.CreateTemp(dir, ".miabi-write-check-*")
 	if err != nil {
@@ -122,12 +106,7 @@ func writable(dir string) bool {
 	return true
 }
 
-// UserManifestPath is where a non-root install keeps its manifest: ~/.miabi/miabi.yaml, beside the
-// CLI's own config. The gateway config lands next to it, because everything an install needs is
-// resolved relative to the manifest. Empty when there is no home directory.
-//
-// It mirrors stack.UserConfigPath in the platform module, which this CLI tracks by release: fold
-// this into a call to that one on the next dependency bump.
+// UserManifestPath mirrors stack.UserConfigPath; fold it into that call on the next dependency bump.
 func UserManifestPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" {
@@ -136,8 +115,6 @@ func UserManifestPath() string {
 	return filepath.Join(home, ".miabi", "miabi.yaml")
 }
 
-// userPathHint names the per-user manifest in an error, falling back to the literal path when there
-// is no home to resolve.
 func userPathHint() string {
 	if p := UserManifestPath(); p != "" {
 		return p

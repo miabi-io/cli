@@ -45,8 +45,7 @@ func TestCollectDriverOpts(t *testing.T) {
 		t.Errorf("device = %q", opts["device"])
 	}
 
-	// No options at all must send nothing rather than an empty object, so the
-	// server keeps its own driver defaults.
+	// No options must send nothing, not an empty object, so the server keeps its driver defaults.
 	volDriverOpt = nil
 	if opts, err = collectDriverOpts(); err != nil || opts != nil {
 		t.Fatalf("opts = %v, %v; want nil, nil", opts, err)
@@ -58,8 +57,7 @@ func TestCollectDriverOpts(t *testing.T) {
 	}
 }
 
-// The file form exists so a share password never reaches the shell history; the
-// trailing newline a text editor adds must not become part of the value.
+// A text editor's trailing newline must not become part of a file-provided value.
 func TestCollectDriverOptsFromFile(t *testing.T) {
 	t.Cleanup(func() { volDriverOpt, volDriverOptFile = nil, nil })
 	p := filepath.Join(t.TempDir(), "mount-opts.txt")
@@ -96,8 +94,7 @@ func TestVolumeSize(t *testing.T) {
 	}
 }
 
-// Never measured and measured-as-empty are different facts and must not render
-// the same: a volume full of data the sweep has not reached would read as 0B.
+// Never measured and measured-as-empty must differ: unswept data would otherwise read as 0B.
 func TestVolumeUsedDistinguishesUnmeasured(t *testing.T) {
 	if got := volumeUsed(api.Volume{UsedBytes: 0}); got != "-" {
 		t.Errorf("unmeasured = %q, want -", got)
@@ -127,9 +124,7 @@ func TestVolumeNodeAndDriverFallBack(t *testing.T) {
 	}
 }
 
-// A workspace plan uses -1 for unlimited and 0 for none, and 0 is the column's
-// default — so the plan that grants no storage is the easy one to create. Sending
-// it through volumeSize said "unlimited", which is the opposite of the truth.
+// Plans use -1 for unlimited and 0 for none; reading 0 as "no ceiling" would say the opposite.
 func TestStorageLimitDoesNotReadNoneAsUnlimited(t *testing.T) {
 	if got := storageLimit(-1); got != "unlimited" {
 		t.Errorf("storageLimit(-1) = %q, want unlimited", got)

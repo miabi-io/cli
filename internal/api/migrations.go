@@ -26,14 +26,12 @@ import (
 	"time"
 )
 
-// MigrationIssue is a blocker or warning a migration plan raised.
 type MigrationIssue struct {
 	Code     string `json:"code"`
 	Message  string `json:"message"`
 	Resource string `json:"resource,omitempty"`
 }
 
-// MigrationPlan is POST /apps/{id}/migrations/plan: what moving an app would do.
 type MigrationPlan struct {
 	Location      string `json:"location"`
 	LocationLabel string `json:"location_label"`
@@ -50,7 +48,6 @@ type MigrationPlan struct {
 	CopyBytes int64             `json:"copy_bytes"`
 }
 
-// MigrationDBItem is one database instance in a plan.
 type MigrationDBItem struct {
 	InstanceID   uint     `json:"instance_id"`
 	InstanceName string   `json:"instance_name"`
@@ -61,14 +58,12 @@ type MigrationDBItem struct {
 	Strategy     string   `json:"strategy"`
 }
 
-// MigrationDBChoice picks a strategy for one instance.
 type MigrationDBChoice struct {
 	InstanceID       uint   `json:"instance_id"`
 	Strategy         string `json:"strategy"`
 	TargetInstanceID uint   `json:"target_instance_id,omitempty"`
 }
 
-// StartMigration is the body of POST /apps/{id}/migrations.
 type StartMigration struct {
 	Location      string              `json:"location"`
 	Databases     []MigrationDBChoice `json:"databases,omitempty"`
@@ -76,7 +71,6 @@ type StartMigration struct {
 	BandwidthKBps int                 `json:"bandwidth_kbps,omitempty"`
 }
 
-// Migration is one location migration.
 type Migration struct {
 	ID       uint          `json:"id"`
 	AppName  string        `json:"app_name"`
@@ -102,8 +96,7 @@ type Migration struct {
 	CreatedAt     time.Time  `json:"created_at"`
 }
 
-// MigrationSettled reports whether a migration has stopped moving on its own: it cut over, waits for a
-// person, or ended.
+// MigrationSettled reports whether it stopped moving on its own: cut over, waiting for a person, or ended.
 func MigrationSettled(status string) bool { return status != "running" }
 
 func (c *Client) PlanMigration(ctx context.Context, ws string, app string, body StartMigration) (*MigrationPlan, error) {
@@ -131,13 +124,11 @@ func (c *Client) Migration(ctx context.Context, ws string, id uint) (*Migration,
 	return &m, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/migrations/%d", ws, id), &m)
 }
 
-// MigrationAction runs cutover, cancel, rollback or finalize.
 func (c *Client) MigrationAction(ctx context.Context, ws string, id uint, action string) (*Migration, error) {
 	var m Migration
 	return &m, c.post(ctx, fmt.Sprintf("/api/v1/workspaces/%s/migrations/%d/%s", ws, id, action), nil, &m)
 }
 
-// WaitForMigration polls until the migration settles, reporting each phase change.
 func (c *Client) WaitForMigration(ctx context.Context, ws string, id uint, onPhase func(*Migration)) (*Migration, error) {
 	last := ""
 	for {

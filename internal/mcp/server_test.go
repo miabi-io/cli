@@ -128,7 +128,6 @@ func TestUnknownMethod(t *testing.T) {
 	}
 }
 
-// remarshal round-trips v (an any decoded from JSON) into the typed target.
 func remarshal(t *testing.T, v any, target any) {
 	t.Helper()
 	b, err := json.Marshal(v)

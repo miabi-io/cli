@@ -61,7 +61,6 @@ var useCmd = &cobra.Command{
 			return nil
 		}
 
-		// No arg: report the current binding.
 		if len(args) == 0 {
 			cur := f.Selected(flagContext)
 			if cur == nil || cur.App == nil {

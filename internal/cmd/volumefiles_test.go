@@ -73,8 +73,7 @@ func TestFilterFiles(t *testing.T) {
 	}
 }
 
-// The delete prompt has to say how much a recursive directory delete takes; the
-// directory entry itself is not part of that count.
+// The recursive delete count excludes the directory entry itself.
 func TestCountUnder(t *testing.T) {
 	files := []api.VolumeFile{
 		{Path: "uploads", IsDir: true},
