@@ -156,7 +156,7 @@ miabi delete -f stack.yaml [--dry-run]            # delete exactly the resources
 
 ### Managing a host
 
-`setup`, `upgrade` and `stack …` are the exception to "API client": they act on the
+`setup`, `upgrade` and `system …` are the exception to "API client": they act on the
 **machine they run on**, through its Docker socket, and never call the HTTP API. This is
 what `curl -fsSL https://get.miabi.io | sudo bash` installs and then runs.
 
@@ -165,11 +165,15 @@ miabi setup [--domain miabi.example.com] [--image miabi/miabi:1.7.3] [--yes]
                                               # install, or converge an existing install
 miabi upgrade [component] [--version 1.8.0 | --image <ref>] [--yes]
                                               # roll forward; rolls back if it never gets healthy
-miabi stack status                            # what runs, its health, drift from the manifest
-miabi stack restart [component] [--yes]       # restart in place, re-reading on-disk config
-miabi stack uninstall [--volumes] [--yes]     # --volumes also destroys the database
-miabi stack migrate-config                    # /etc/miabi/stack.yaml -> /etc/miabi/miabi.yaml
+miabi system status                           # what runs, its health, drift from the manifest
+miabi system restart [component] [--yes]      # restart in place, re-reading on-disk config
+miabi system env set KEY=VALUE                # change the manifest's env; `system apply` makes it live
+miabi system backup                           # dump the platform database (`backups`, `restore`)
+miabi system uninstall [--volumes] [--yes]    # --volumes also destroys the database
+miabi system config migrate                   # /etc/miabi/stack.yaml -> /etc/miabi/miabi.yaml
 ```
+
+These commands were `miabi stack …` before; that spelling still works and prints the new one.
 
 All of them need **root** and a Linux or macOS Docker host. `setup` is idempotent: re-run
 it and the stack converges to `/etc/miabi/miabi.yaml`, keeping the stored secrets. `-f,
