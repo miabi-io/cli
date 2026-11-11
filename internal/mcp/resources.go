@@ -27,23 +27,13 @@ import (
 	"strings"
 )
 
-// Resources expose apps and their deployments under a stable miabi:// URI so an
-// agent can attach one as context (an "@-mention"). The scheme is:
-//
-//	miabi://workspaces/{ws}/apps/{app}
-//	miabi://workspaces/{ws}/apps/{app}/deployments/{number}
-//
-// The workspace segment keeps a URI unambiguous across workspaces; resources/list
-// fills it with the CLI's active workspace.
-
+// Resource URIs include the workspace segment so they stay unambiguous across workspaces.
 const uriScheme = "miabi://"
 
-// appURI builds the canonical URI for an app.
 func appURI(ws, app string) string {
 	return fmt.Sprintf("%sworkspaces/%s/apps/%s", uriScheme, ws, app)
 }
 
-// parsedURI is a decoded miabi:// resource reference.
 type parsedURI struct {
 	workspace  string
 	app        string
@@ -51,7 +41,6 @@ type parsedURI struct {
 	isDeploy   bool
 }
 
-// parseURI decodes a miabi:// app/deployment URI.
 func parseURI(uri string) (parsedURI, error) {
 	var p parsedURI
 	rest, ok := strings.CutPrefix(uri, uriScheme)
@@ -79,9 +68,6 @@ func parseURI(uri string) (parsedURI, error) {
 	return p, nil
 }
 
-// resourceTemplates advertises the parameterized URIs an agent can construct. The
-// concrete app list comes from resources/list; deployments are per-app and better
-// expressed as a template than enumerated.
 func resourceTemplates() []resourceTemplate {
 	return []resourceTemplate{
 		{
@@ -101,9 +87,7 @@ func resourceTemplates() []resourceTemplate {
 	}
 }
 
-// handleResourcesList enumerates the apps in the active workspace as resources.
-// With no resolvable workspace it returns an empty list (not an error) — an agent
-// can still read a resource by constructing its URI.
+// handleResourcesList returns an empty list without a workspace; agents can still construct URIs.
 func (s *Server) handleResourcesList(ctx context.Context) (*resourcesListResult, *rpcError) {
 	ws, err := s.client.ResolveWorkspaceName(ctx, "", s.fallbackWS)
 	if err != nil {
@@ -126,8 +110,6 @@ func (s *Server) handleResourcesList(ctx context.Context) (*resourcesListResult,
 	return &resourcesListResult{Resources: out}, nil
 }
 
-// handleResourceRead fetches the app or deployment a URI names and returns it as
-// JSON text.
 func (s *Server) handleResourceRead(ctx context.Context, raw json.RawMessage) (*readResourceResult, *rpcError) {
 	var p readResourceParams
 	if err := json.Unmarshal(raw, &p); err != nil {

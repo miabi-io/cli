@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package config resolves the CLI's connection context — the server URL and how
-// to trust it, the API token, and the active workspace — from flags, environment,
-// and ~/.miabi/config.yaml, in that precedence. The token is never logged.
+// Package config resolves the CLI connection context from flags, env and ~/.miabi/config.yaml, in that order.
 package config
 
 import (
@@ -34,50 +32,37 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// WorkspaceRef is the active workspace persisted by `miabi workspace switch`.
-// ID is the durable key (paths address by it); Name is the unique handle and
-// DisplayName the free-text label, kept for display.
+// WorkspaceRef is the active workspace persisted by `miabi workspace switch`; ID is the durable key.
 type WorkspaceRef struct {
 	ID          uint   `yaml:"id" json:"id"`
 	Name        string `yaml:"name" json:"name"`
 	DisplayName string `yaml:"display_name,omitempty" json:"display_name,omitempty"`
 }
 
-// Identity is the authenticated user, captured at `miabi login` for offline
-// display (`whoami`/`workspace show`). The token remains the source of truth.
+// Identity is captured at login for offline display only; the token remains the source of truth.
 type Identity struct {
-	Name     string `yaml:"name,omitempty" json:"name,omitempty"` // display name
+	Name     string `yaml:"name,omitempty" json:"name,omitempty"`
 	Username string `yaml:"username,omitempty" json:"username,omitempty"`
 	Email    string `yaml:"email,omitempty" json:"email,omitempty"`
 }
 
-// AppRef is the current application bound by `miabi use <app>`, so app-scoped
-// commands need no explicit argument. It belongs to the active Workspace and is
-// cleared whenever the workspace changes. Name is the unique handle commands
-// address by; DisplayName is the free-text label, kept for display.
+// AppRef is the app bound by `miabi use`; it is cleared whenever the workspace changes.
 type AppRef struct {
 	ID          uint   `yaml:"id" json:"id"`
 	Name        string `yaml:"name" json:"name"`
 	DisplayName string `yaml:"display_name,omitempty" json:"display_name,omitempty"`
 }
 
-// Server describes how to reach and trust one Miabi control plane: its base URL,
-// an optional custom CA bundle to trust, and an escape hatch to skip TLS
-// verification (self-signed / homelab).
+// Server describes how to reach and trust one Miabi control plane.
 type Server struct {
 	URL string `yaml:"url,omitempty"`
-	// CA is a path to a PEM CA bundle to trust in addition to the system roots
-	// (for a private/self-signed control-plane certificate). Empty uses system roots.
+	// CA is a PEM bundle trusted in addition to the system roots.
 	CA string `yaml:"ca,omitempty"`
-	// InsecureSkip disables TLS verification entirely. A blunt instrument for dev;
-	// prefer CA. Never use against a public server.
+	// InsecureSkip disables TLS verification entirely; never use it against a public server.
 	InsecureSkip bool `yaml:"insecure_skip,omitempty"`
 }
 
-// Context is one named connection profile: how to reach and trust a Miabi server,
-// the token to authenticate with, and the workspace/app bound for that server.
-// Multiple contexts let you switch between Miabi instances (dev / staging / prod)
-// with `miabi context use`.
+// Context is one named connection profile (server, token, bound workspace/app).
 type Context struct {
 	Server    Server        `yaml:"server,omitempty"`
 	Token     string        `yaml:"token,omitempty"`
@@ -86,14 +71,7 @@ type Context struct {
 	App       *AppRef       `yaml:"app,omitempty"`
 }
 
-// The token is stored base64-encoded in the file so it isn't sitting in plain
-// text (light obfuscation — NOT encryption; anyone who can read the file, which
-// is mode 0600, can decode it). Code always sees the plaintext token: Context's
-// YAML methods encode on write and decode on read, transparently, and still read
-// legacy plaintext tokens written before this change.
-
-// contextYAML mirrors Context but has no custom (Un)marshaler, so it drives the
-// default field-based encoding without recursing back into Context's methods.
+// contextYAML mirrors Context without its (Un)marshalers so encoding does not recurse.
 type contextYAML struct {
 	Server    Server        `yaml:"server,omitempty"`
 	Token     string        `yaml:"token,omitempty"`
@@ -102,6 +80,7 @@ type contextYAML struct {
 	App       *AppRef       `yaml:"app,omitempty"`
 }
 
+// MarshalYAML base64-encodes the token: obfuscation only, not encryption.
 func (c Context) MarshalYAML() (any, error) {
 	y := contextYAML(c)
 	if y.Token != "" {
@@ -120,10 +99,7 @@ func (c *Context) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-// decodeToken returns the plaintext token from its stored form. A legacy plaintext
-// Miabi token contains "_" (the `mb_` prefix), which standard base64 never does,
-// so it is returned as-is; anything else is base64-decoded (falling back to the
-// raw value if it isn't valid base64).
+// decodeToken passes legacy plaintext tokens through: their `mb_` prefix contains "_", which base64 never does.
 func decodeToken(raw string) string {
 	if raw == "" || strings.Contains(raw, "_") {
 		return raw
@@ -139,19 +115,16 @@ type File struct {
 	Current  string              `yaml:"current,omitempty"`
 	Contexts map[string]*Context `yaml:"contexts,omitempty"`
 
-	// --- Legacy single-context fields (pre-multi-context). Read for backward
-	// compat and migrated into a context on Load, then cleared so Save writes only
-	// the multi-context form. Pointers/omitempty so they never re-emit. ---
+	// Legacy single-context fields, migrated on Load and cleared so Save never re-emits them.
 	LegacyServer    *Server       `yaml:"server,omitempty"`
 	LegacyToken     string        `yaml:"token,omitempty"`
 	LegacyUser      *Identity     `yaml:"user,omitempty"`
 	LegacyWorkspace *WorkspaceRef `yaml:"workspace,omitempty"`
 	LegacyApp       *AppRef       `yaml:"app,omitempty"`
-	LegacyURL       string        `yaml:"url,omitempty"` // oldest flat form
+	LegacyURL       string        `yaml:"url,omitempty"`
 }
 
-// CurrentContext returns the active context, or nil when none is set (e.g. a
-// fresh install, or env-only CI use with no config file).
+// CurrentContext returns the active context, or nil when none is set.
 func (f *File) CurrentContext() *Context {
 	if f.Current == "" || f.Contexts == nil {
 		return nil
@@ -159,8 +132,7 @@ func (f *File) CurrentContext() *Context {
 	return f.Contexts[f.Current]
 }
 
-// EnsureContext returns the named context, creating it (and the map) if absent,
-// and makes it the current one. Used by login to write a connection profile.
+// EnsureContext returns the named context, creating it if absent, and makes it current.
 func (f *File) EnsureContext(name string) *Context {
 	if f.Contexts == nil {
 		f.Contexts = map[string]*Context{}
@@ -174,8 +146,7 @@ func (f *File) EnsureContext(name string) *Context {
 	return c
 }
 
-// EnsureCurrent returns the current context, creating a "default" one when none
-// is set — so binding a workspace/app works even before an explicit login.
+// EnsureCurrent creates a "default" context when none is set, so binding works before login.
 func (f *File) EnsureCurrent() *Context {
 	if c := f.CurrentContext(); c != nil {
 		return c
@@ -183,8 +154,7 @@ func (f *File) EnsureCurrent() *Context {
 	return f.EnsureContext("default")
 }
 
-// SelectedName is the context a command runs against: --context, else
-// MIABI_CONTEXT, else the file's current one.
+// SelectedName picks --context, else MIABI_CONTEXT, else the file's current context.
 func (f *File) SelectedName(flag string) string {
 	return firstNonEmpty(flag, os.Getenv("MIABI_CONTEXT"), f.Current)
 }
@@ -224,8 +194,6 @@ func (f *File) ContextNames() []string {
 	return names
 }
 
-// migrate folds the oldest flat `url:` and the single-context legacy fields into
-// a "default" context, then clears them so Save writes only the new form.
 func (f *File) migrate() {
 	if f.LegacyURL != "" {
 		if f.LegacyServer == nil {
@@ -251,8 +219,7 @@ func (f *File) migrate() {
 	f.LegacyServer, f.LegacyToken, f.LegacyUser, f.LegacyWorkspace, f.LegacyApp, f.LegacyURL = nil, "", nil, nil, nil, ""
 }
 
-// Path returns the config file location (honoring MIABI_CONFIG, else
-// ~/.miabi/config.yaml).
+// Path returns MIABI_CONFIG, else ~/.miabi/config.yaml.
 func Path() string {
 	if p := os.Getenv("MIABI_CONFIG"); p != "" {
 		return p
@@ -264,8 +231,7 @@ func Path() string {
 	return filepath.Join(home, ".miabi", "config.yaml")
 }
 
-// Load reads the config file. A missing file is not an error (returns an empty
-// File), so CI that uses only env vars never needs one.
+// Load treats a missing file as empty, so env-only CI never needs one.
 func Load() (*File, error) {
 	data, err := os.ReadFile(Path())
 	if err != nil {
@@ -282,8 +248,7 @@ func Load() (*File, error) {
 	return &f, nil
 }
 
-// Save writes the config file, creating ~/.miabi with 0700 and the file with
-// 0600 (it holds a token).
+// Save writes the file with mode 0600 because it holds a token.
 func Save(f *File) error {
 	p := Path()
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
@@ -298,32 +263,25 @@ func Save(f *File) error {
 
 // Effective is the resolved context a command runs against.
 type Effective struct {
-	Context      string // the context whose settings apply; "" when none does
+	Context      string // "" when no context applies
 	URL          string
 	Token        string
-	CA           string        // path to a CA bundle; may be empty (system roots)
-	InsecureSkip bool          // skip TLS verification
-	Workspace    *WorkspaceRef // from the file; may be nil
-	App          *AppRef       // current app bound by `miabi use`; may be nil
+	CA           string
+	InsecureSkip bool
+	Workspace    *WorkspaceRef
+	App          *AppRef
 }
 
-// Flags carries the connection flags a command parsed, for Resolve to apply at
-// the top of the precedence chain (flags → env → active context).
+// Flags carries the parsed connection flags, which take precedence over env and context.
 type Flags struct {
-	Context      string // --context (select which context to use for this call)
-	Server       string // --server (or the deprecated --url)
-	Token        string // --token
-	CA           string // --certificate-authority
-	InsecureSkip bool   // --insecure-skip-tls-verify
+	Context      string
+	Server       string // --server or the deprecated --url
+	Token        string
+	CA           string
+	InsecureSkip bool
 }
 
-// Resolve resolves the connection context: it picks the active context
-// (--context → MIABI_CONTEXT → the file's `current`) and applies precedence
-// flags → env → that context's values on top. Flags/env alone are enough (no
-// context needed), so env-only CI keeps working. MIABI_SERVER is preferred over
-// the legacy MIABI_URL. A context named with --context or MIABI_CONTEXT must
-// exist. A server override pointing elsewhere drops the context's token, TLS
-// settings, workspace and app, so they never reach another server.
+// Resolve drops the context's token and settings when a server override points elsewhere, so they never leak.
 func Resolve(fl Flags) (*Effective, error) {
 	f, err := Load()
 	if err != nil {
@@ -373,7 +331,6 @@ func firstNonEmpty(vs ...string) string {
 	return ""
 }
 
-// envBool parses a boolean env var, defaulting to false on unset/garbage.
 func envBool(key string) bool {
 	b, _ := strconv.ParseBool(os.Getenv(key))
 	return b

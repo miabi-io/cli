@@ -35,8 +35,7 @@ func TestNormalizeLoginScopes(t *testing.T) {
 		{[]string{"READ", " write "}, "read,write", false},
 		{[]string{"read", "read", "deploy"}, "read,deploy", false},
 		{[]string{"read", ""}, "read", false},
-		// A login token is never an administrative one, so the server refuses these — say so here,
-		// before the browser round-trip, rather than after it.
+		// A login token is never administrative; refuse these before the browser round-trip, not after.
 		{[]string{"admin"}, "", true},
 		{[]string{"*"}, "", true},
 		{[]string{"reed"}, "", true},
@@ -58,8 +57,7 @@ func TestNormalizeLoginScopes(t *testing.T) {
 	}
 }
 
-// The point of the check: a server that ignores --scopes hands back its full default, and saving
-// that as if it were narrowed is the false assurance the flag exists to remove.
+// A server ignoring --scopes returns its full default; saving that as narrowed is false assurance.
 func TestAssertScopes(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -80,8 +78,7 @@ func TestAssertScopes(t *testing.T) {
 	}
 }
 
-// Read-only mode is a client-side tool filter, not a server boundary. The advice has to say so
-// when the token is broader, and stay quiet when the two agree.
+// Read-only mode is a client-side filter, not a server boundary; the advice must say so for broader tokens.
 func TestScopeAdvice(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

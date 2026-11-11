@@ -21,12 +21,8 @@ package api
 
 import "time"
 
-// These are thin, read-only mirrors of the documented JSON — only the fields the
-// CLI uses. They are intentionally not generated from the server's internal DTOs
-// (the OpenAPI spec is the contract); extend them as commands grow.
+// Read-only mirrors of the documented JSON, not generated from server DTOs: the OpenAPI spec is the contract.
 
-// Me is GET /api/v1/me — the authenticated identity and, for an API key, its
-// scopes and bound workspace.
 type Me struct {
 	ID       uint   `json:"id"`
 	Name     string `json:"name"`
@@ -41,16 +37,12 @@ type Me struct {
 	} `json:"auth"`
 }
 
-// LoginToken is the minted CLI token returned by the login-token claim endpoint
-// (the browser hands off a single-use code; this is what it exchanges to).
 type LoginToken struct {
 	Token     string `json:"token"`
 	ServerURL string `json:"server_url"`
 	ExpiresAt string `json:"expires_at"`
 }
 
-// Workspace is one entry of GET /api/v1/workspaces. Name is the unique handle;
-// DisplayName is the free-text label.
 type Workspace struct {
 	ID          uint   `json:"id"`
 	UID         string `json:"uid"`
@@ -59,15 +51,13 @@ type Workspace struct {
 	Role        string `json:"role"`
 }
 
-// App is an application listing/detail (only the fields the CLI surfaces). Name
-// is the unique handle; DisplayName is the free-text label.
 type App struct {
 	ID          uint   `json:"id"`
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
 	Image       string `json:"image"`
 	Tag         string `json:"tag"`
-	// SourceType is "image" or "git" — what the app builds from.
+	// SourceType is "image" or "git".
 	SourceType       string    `json:"source_type"`
 	GitRepo          string    `json:"git_repo,omitempty"`
 	GitRef           string    `json:"git_ref,omitempty"`
@@ -76,10 +66,7 @@ type App struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
-// CreateAppRequest is the body of POST .../apps (only the common fields the CLI
-// exposes). SourceType is "image" or "git"; the CLI infers it from the flags.
-// DisplayName is the required free-text label; Name pins the handle (the server
-// otherwise derives it from DisplayName).
+// CreateAppRequest: the server derives Name from DisplayName when Name is empty.
 type CreateAppRequest struct {
 	DisplayName string   `json:"display_name"`
 	Name        string   `json:"name,omitempty"`
@@ -94,8 +81,7 @@ type CreateAppRequest struct {
 	Command     []string `json:"command,omitempty"`
 }
 
-// SetAppSourceRequest is a whole-source replacement. Only the fields of the chosen source_type are
-// read; the server clears the other source's.
+// SetAppSourceRequest is a whole-source replacement; the server clears the other source's fields.
 type SetAppSourceRequest struct {
 	SourceType string `json:"source_type"`
 
@@ -110,8 +96,7 @@ type SetAppSourceRequest struct {
 	Builder         string `json:"builder,omitempty"`
 }
 
-// SourceChange reports what else moved when the source changed. None of it is visible in the app
-// record afterwards, so it is worth surfacing.
+// SourceChange is worth surfacing: none of it shows in the app record afterwards.
 type SourceChange struct {
 	From string `json:"from"`
 	To   string `json:"to"`
@@ -128,8 +113,7 @@ type SetAppSourceResult struct {
 	Change      SourceChange `json:"change"`
 }
 
-// ResyncPipelineResult reports the pipeline the app ended up bound to. Changed is false when the
-// repository's document already matched what was stored — a successful no-op, not a failure.
+// ResyncPipelineResult.Changed is false when the stored document already matched: a no-op, not a failure.
 type ResyncPipelineResult struct {
 	Pipeline *struct {
 		Name       string `json:"name"`
@@ -140,11 +124,9 @@ type ResyncPipelineResult struct {
 	Adopted bool `json:"adopted"`
 }
 
-// Deployment is the deploy/rollback response and status object.
 type Deployment struct {
 	ID uint `json:"id"`
-	// Number is the per-application deployment number (1, 2, 3…) users address
-	// deployments by; ID is the durable platform-wide key used in API paths.
+	// Number is the per-app number users see; ID is the durable key API paths use.
 	Number        int        `json:"number"`
 	ApplicationID uint       `json:"application_id"`
 	Status        string     `json:"status"`
@@ -155,11 +137,9 @@ type Deployment struct {
 	StartedAt     *time.Time `json:"started_at"`
 	FinishedAt    *time.Time `json:"finished_at"`
 	CreatedAt     time.Time  `json:"created_at"`
-	// Current marks the deployment whose release is live right now.
-	Current bool `json:"current"`
+	Current       bool       `json:"current"`
 }
 
-// Release is one immutable release of an app.
 type Release struct {
 	ID            uint      `json:"id"`
 	ApplicationID uint      `json:"application_id"`
@@ -171,19 +151,15 @@ type Release struct {
 	CreatedAt     time.Time `json:"created_at"`
 }
 
-// Deploy-status classification. The server treats succeeded (and the legacy
-// "running") as terminal success and "failed" as terminal failure; everything
-// else is in-progress.
+// "running" is a legacy terminal success; any status that is not terminal is in progress.
 const (
 	StatusSucceeded = "succeeded"
 	StatusRunning   = "running" // legacy terminal success
 	StatusFailed    = "failed"
-	// StatusCanary is a canary serving part of the traffic. It is not terminal: it
-	// waits for a human to promote or abort it.
+	// StatusCanary is not terminal: it waits for a human to promote or abort it.
 	StatusCanary = "canary"
 )
 
-// IsTerminal reports whether a deployment status will not change further.
 func IsTerminal(status string) bool {
 	switch status {
 	case StatusSucceeded, StatusRunning, StatusFailed:
@@ -193,15 +169,12 @@ func IsTerminal(status string) bool {
 	}
 }
 
-// IsFailure reports a terminal failure.
 func IsFailure(status string) bool { return status == StatusFailed }
 
-// IsSettled reports whether waiting on a deployment can stop: it is terminal, or
-// it is a canary that will not move until someone promotes it.
+// IsSettled is also true for a canary, which will not move until someone promotes it.
 func IsSettled(status string) bool { return IsTerminal(status) || status == StatusCanary }
 
-// DeployRequest is the body of POST .../deploy. image is not part of the deploy
-// contract (the app owns its image); only a tag/registry/strategy override.
+// DeployRequest carries no image (the app owns it), only a tag/registry/strategy override.
 type DeployRequest struct {
 	Tag        string `json:"tag,omitempty"`
 	Strategy   string `json:"strategy,omitempty"`
@@ -210,7 +183,6 @@ type DeployRequest struct {
 	NoCache bool `json:"no_cache,omitempty"`
 }
 
-// Pipeline is a CI/CD pipeline definition in the workspace.
 type Pipeline struct {
 	ID          uint      `json:"id"`
 	Name        string    `json:"name"`
@@ -220,7 +192,6 @@ type Pipeline struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// PipelineRun is one execution of a pipeline.
 type PipelineRun struct {
 	ID         uint       `json:"id"`
 	PipelineID uint       `json:"pipeline_id"`
@@ -238,7 +209,6 @@ type PipelineRun struct {
 	CreatedAt  time.Time  `json:"created_at"`
 }
 
-// IsRunTerminal reports whether a pipeline run has settled.
 func IsRunTerminal(status string) bool {
 	switch status {
 	case "succeeded", "failed", "canceled":
@@ -248,8 +218,7 @@ func IsRunTerminal(status string) bool {
 	}
 }
 
-// DeployResult is what deploy and rollback answer. An app whose repository owns a
-// pipeline deploys by running it, so exactly one of Deployment and Run is set.
+// DeployResult sets exactly one of Deployment and Run: a repo-owned pipeline deploys by running it.
 type DeployResult struct {
 	Kind       string       `json:"kind"` // deployment | pipeline_run
 	Deployment *Deployment  `json:"deployment,omitempty"`
@@ -258,7 +227,6 @@ type DeployResult struct {
 	WaitTimedOut bool `json:"wait_timed_out,omitempty"`
 }
 
-// TriggerPipelineRequest is the body of POST .../pipelines/{id}/trigger.
 type TriggerPipelineRequest struct {
 	Branch  string `json:"branch,omitempty"`
 	Commit  string `json:"commit,omitempty"`
@@ -268,7 +236,6 @@ type TriggerPipelineRequest struct {
 	Version string `json:"version,omitempty"`
 }
 
-// VersionSettings is how an image repository numbers its builds.
 type VersionSettings struct {
 	Scheme          string          `json:"scheme"`
 	Template        string          `json:"template,omitempty"`
@@ -281,14 +248,12 @@ type VersionSettings struct {
 	BumpFromCommits bool            `json:"bump_from_commits,omitempty"`
 }
 
-// VersionBranches decides which branches release and how the others are tagged.
 type VersionBranches struct {
 	Release []string          `json:"release,omitempty"`
 	Others  string            `json:"others,omitempty"`
 	Series  map[string]string `json:"series,omitempty"`
 }
 
-// VersionPolicy is the version policy covering a pipeline's image repository.
 type VersionPolicy struct {
 	ID              uint              `json:"id"`
 	UID             string            `json:"uid"`
@@ -310,7 +275,6 @@ type VersionPolicy struct {
 	Next            string            `json:"next,omitempty"`
 }
 
-// Settings reads a policy back in the shape the API accepts on update.
 func (p VersionPolicy) Settings() VersionSettings {
 	return VersionSettings{
 		Scheme: p.Scheme, Template: p.Template, Series: p.Series, Bump: p.Bump, Start: p.Start,
@@ -320,7 +284,6 @@ func (p VersionPolicy) Settings() VersionSettings {
 	}
 }
 
-// VersionAllocation is one version a policy handed to a run.
 type VersionAllocation struct {
 	Version    string    `json:"version"`
 	Tag        string    `json:"tag"`
@@ -334,41 +297,32 @@ type VersionAllocation struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// RerunPipelineRequest is the body of POST .../pipeline-runs/{id}/rerun.
 type RerunPipelineRequest struct {
 	NoCache bool `json:"no_cache,omitempty"`
 }
 
-// RollbackRequest is the body of POST .../rollback.
 type RollbackRequest struct {
 	ReleaseID uint `json:"release_id"`
 }
 
-// EnvVar is one of an application's environment variables. The server masks the
-// value of a secret var, so Value is never the plaintext for those.
+// The server masks secret values, so Value is never their plaintext.
 type EnvVar struct {
 	Key      string `json:"key"`
 	Value    string `json:"value"`
 	IsSecret bool   `json:"is_secret"`
 }
 
-// SetEnvRequest is the body of PUT .../env.
 type SetEnvRequest struct {
 	Key      string `json:"key"`
 	Value    string `json:"value"`
 	IsSecret bool   `json:"is_secret"`
 }
 
-// ImportEnvRequest is the body of POST .../env/import.
 type ImportEnvRequest struct {
 	Content  string `json:"content"`
 	IsSecret bool   `json:"is_secret"`
 }
 
-// === databases ============================================================
-
-// DatabaseInstance is a managed database server (only the fields the CLI shows).
-// Name is the unique handle; DisplayName is the free-text label.
 type DatabaseInstance struct {
 	ID          uint      `json:"id"`
 	Name        string    `json:"name"`
@@ -386,7 +340,6 @@ type DatabaseInstance struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
-// LogicalDatabase is a database hosted on an instance (SQL engines).
 type LogicalDatabase struct {
 	ID            uint              `json:"id"`
 	InstanceID    uint              `json:"instance_id"`
@@ -401,9 +354,7 @@ type LogicalDatabase struct {
 	CreatedAt     time.Time         `json:"created_at"`
 }
 
-// AppDatabase is a database linked to an app: a logical database (kind
-// "database") or a whole instance such as Redis (kind "instance", id and name
-// are the instance's).
+// AppDatabase is a logical database (kind "database") or a whole instance (kind "instance", ids are its).
 type AppDatabase struct {
 	LogicalDatabase
 	Kind         string `json:"kind"`
@@ -413,21 +364,17 @@ type AppDatabase struct {
 	Port         int    `json:"port"`
 }
 
-// LinkDatabaseRequest sets how a linked database's connection lands in the
-// app env. EnvMap renames a field's var (url, database_url, host, port, name,
-// user, password); an empty name skips it.
+// LinkDatabaseRequest.EnvMap renames a connection field's env var; an empty name skips that field.
 type LinkDatabaseRequest struct {
 	EnvPrefix string            `json:"env_prefix,omitempty"`
 	EnvMap    map[string]string `json:"env_map,omitempty"`
 }
 
-// LinkDatabaseResult reports the vars a link injected.
 type LinkDatabaseResult struct {
 	EnvInjected bool     `json:"env_injected"`
 	EnvVars     []string `json:"env_vars"`
 }
 
-// ConnectionInfo is a revealed database connection (admin credentials / DSN).
 type ConnectionInfo struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
@@ -437,14 +384,12 @@ type ConnectionInfo struct {
 	URI      string `json:"uri"`
 }
 
-// EngineDefault is one entry of GET /database-engines.
 type EngineDefault struct {
 	Engine  string `json:"engine"`
 	Image   string `json:"image"`
 	Version string `json:"version"`
 }
 
-// CreateDatabaseRequest is the body of POST .../databases.
 type CreateDatabaseRequest struct {
 	Name     string `json:"name"`
 	Engine   string `json:"engine"`
@@ -453,33 +398,22 @@ type CreateDatabaseRequest struct {
 	SizeMB   int    `json:"size_mb,omitempty"`
 }
 
-// UpgradeDatabaseRequest is the body of POST .../databases/{id}/upgrade.
 type UpgradeDatabaseRequest struct {
 	Version  string `json:"version"`
 	StopApps bool   `json:"stop_apps,omitempty"`
 }
 
-// CreateLogicalDatabaseRequest is the body of POST .../databases/{id}/databases.
 type CreateLogicalDatabaseRequest struct {
 	Name          string `json:"name"`
 	ApplicationID *uint  `json:"application_id"`
 }
 
-// CreateLogicalDatabaseResult is the create-logical-database response.
 type CreateLogicalDatabaseResult struct {
 	Database    LogicalDatabase `json:"database"`
 	EnvInjected bool            `json:"env_injected"`
 }
 
-// === volumes (persistent storage) =========================================
-
-// Volume is a workspace-owned managed volume. Name is the unique handle the CLI
-// and API address it by; DisplayName is the free-text label the UI shows.
-//
-// SizeBytes is the *declared* capacity asked for at create time (0 = unbounded);
-// UsedBytes is the last *measured* on-disk usage, refreshed by the panel's
-// storage sweep. They are different numbers: a nil UsedMeasuredAt means the
-// volume has never been measured, not that it is empty.
+// Volume.UsedBytes is measured, SizeBytes declared; a nil UsedMeasuredAt means never measured, not empty.
 type Volume struct {
 	ID          uint   `json:"id"`
 	UID         string `json:"uid"`
@@ -487,16 +421,14 @@ type Volume struct {
 	DisplayName string `json:"display_name"`
 	// DockerName is the underlying Docker volume, which is not the handle.
 	DockerName string `json:"docker_name"`
-	// ServerID is the node the volume lives on (0 = the local control-plane node);
-	// ServerName is its display name, populated on read.
+	// ServerID 0 is the local control-plane node.
 	ServerID       uint       `json:"server_id"`
 	ServerName     string     `json:"server_name,omitempty"`
 	Mountpoint     string     `json:"mountpoint,omitempty"`
 	SizeBytes      int64      `json:"size_bytes"`
 	UsedBytes      int64      `json:"used_bytes"`
 	UsedMeasuredAt *time.Time `json:"used_measured_at,omitempty"`
-	// Driver is local (node-local) | nfs | cifs (shared) | host (an operator-managed
-	// bind). AccessMode follows from it: rwo for local, rwx for everything else.
+	// Driver is local (rwo) or nfs | cifs | host (rwx).
 	Driver     string `json:"driver"`
 	AccessMode string `json:"access_mode"`
 	HostPath   string `json:"host_path,omitempty"`
@@ -506,7 +438,6 @@ type Volume struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// VolumeUsage is one application mounting a volume, with its mount path.
 type VolumeUsage struct {
 	AppID          uint   `json:"app_id"`
 	AppName        string `json:"app_name"`
@@ -514,32 +445,25 @@ type VolumeUsage struct {
 	Path           string `json:"path"`
 }
 
-// VolumeDetail is GET .../volumes/{id}: the stored volume plus live Docker state
-// (Exists) and the applications that mount it.
 type VolumeDetail struct {
-	// Inlined for -o yaml: encoding/json flattens an anonymous struct on its own,
-	// gopkg.in/yaml.v3 nests it under "volume" unless told otherwise.
+	// Inlined for yaml.v3, which otherwise nests the anonymous struct under "volume"; encoding/json flattens it.
 	Volume `yaml:",inline"`
 	Exists bool          `json:"exists"`
 	InUse  bool          `json:"in_use"`
 	UsedBy []VolumeUsage `json:"used_by"`
 }
 
-// CreateVolumeRequest is the body of POST .../volumes. A volume is immutable
-// once created — there is no update endpoint.
+// CreateVolumeRequest is final: a volume has no update endpoint.
 type CreateVolumeRequest struct {
 	Name     string `json:"name"`
 	ServerID uint   `json:"server_id,omitempty"`
 	SizeMB   int    `json:"size_mb,omitempty"`
-	// Driver is local (default) | nfs | cifs | host. DriverOpts are the backend's
-	// mount options — NFS/CIFS need device (and usually o), host needs path. They
-	// are encrypted at rest and never returned.
+	// DriverOpts are the backend's mount options (NFS/CIFS: device, o; host: path), encrypted and never returned.
 	Driver     string            `json:"driver,omitempty"`
 	DriverOpts map[string]string `json:"driver_opts,omitempty"`
 }
 
-// WorkspaceStorage is GET .../storage: the workspace's declared-vs-measured
-// storage totals. LimitMB is the plan's cap, -1 when unlimited.
+// WorkspaceStorage.LimitMB is -1 when unlimited.
 type WorkspaceStorage struct {
 	DeclaredBytes int64      `json:"declared_bytes"`
 	UsedBytes     int64      `json:"used_bytes"`
@@ -548,8 +472,7 @@ type WorkspaceStorage struct {
 	VolumeCount   int64      `json:"volume_count"`
 }
 
-// VolumeFile is one entry of a volume's recursive file listing. Path is relative
-// to the volume root; ModTime is unix seconds; directories report size 0.
+// VolumeFile paths are relative to the volume root; ModTime is unix seconds; directories report size 0.
 type VolumeFile struct {
 	Path    string `json:"path"`
 	Size    int64  `json:"size"`
@@ -557,13 +480,10 @@ type VolumeFile struct {
 	IsDir   bool   `json:"is_dir"`
 }
 
-// VolumeUploadResult is the payload of POST .../volumes/{id}/files: the path the
-// file landed on, relative to the volume root.
 type VolumeUploadResult struct {
 	Path string `json:"path"`
 }
 
-// VolumeBackup is one backup run of a volume's contents to S3.
 type VolumeBackup struct {
 	ID          uint `json:"id"`
 	WorkspaceID uint `json:"workspace_id"`
@@ -594,9 +514,7 @@ type VolumeBackup struct {
 	VerifyError  string     `json:"verify_error,omitempty"`
 }
 
-// Backup-run statuses. These are NOT the deploy statuses: "running" is terminal
-// for a deployment and in-flight for a backup, so they need their own
-// classification.
+// Backup statuses: "running" is in flight here but terminal for a deployment.
 const (
 	BackupPending   = "pending"
 	BackupRunning   = "running"
@@ -604,15 +522,12 @@ const (
 	BackupFailed    = "failed"
 )
 
-// IsBackupTerminal reports whether a backup run has settled.
 func IsBackupTerminal(status string) bool {
 	return status == BackupCompleted || status == BackupFailed
 }
 
-// IsBackupFailure reports a terminal backup failure.
 func IsBackupFailure(status string) bool { return status == BackupFailed }
 
-// VolumeBackupStatus is GET .../volumes/{id}/backups/status.
 type VolumeBackupStatus struct {
 	S3Configured bool `json:"s3_configured"`
 	Entitled     bool `json:"entitled"`
@@ -620,17 +535,12 @@ type VolumeBackupStatus struct {
 	Sealing      bool `json:"sealing"`
 }
 
-// AttachVolumeRequest is the body of POST .../apps/{id}/volumes.
 type AttachVolumeRequest struct {
 	VolumeID uint   `json:"volume_id"`
 	Path     string `json:"path"`
 }
 
-// === secrets (workspace Vault) ============================================
-
-// Secret is one entry of the workspace Vault. Values are write-only over the API
-// and never appear here — reveal them explicitly (admin-only, audited). Name is
-// the unique handle env refs use (${{ secrets.NAME }}); DisplayName is a label.
+// Secret values are write-only over the API; Name is the handle env refs use (${{ secrets.NAME }}).
 type Secret struct {
 	ID          uint   `json:"id"`
 	UID         string `json:"uid"`
@@ -639,8 +549,7 @@ type Secret struct {
 	Description string `json:"description"`
 	// Version bumps on each value rotation.
 	Version int `json:"version"`
-	// Managed marks a secret owned by a platform resource (e.g. a managed
-	// database); rotate it via its owner, not by hand.
+	// Managed secrets belong to a platform resource; rotate them via the owner, not by hand.
 	Managed bool `json:"managed"`
 	// SealedKeyVersion is set when the value came from a sealed value in a manifest.
 	SealedKeyVersion int       `json:"sealed_key_version,omitempty"`
@@ -648,33 +557,28 @@ type Secret struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 
-// SealingKey is the public key a workspace's secrets are sealed to.
 type SealingKey struct {
 	Version   int    `json:"version"`
 	PublicKey string `json:"public_key"`
 }
 
-// CreateSecretRequest is the body of POST .../secrets.
 type CreateSecretRequest struct {
 	Name        string `json:"name"`
 	Value       string `json:"value"`
 	Description string `json:"description,omitempty"`
 }
 
-// UpdateSecretRequest is the body of PUT .../secrets/{id}. A blank Value keeps
-// the stored value (a description-only edit); a new value rotates the secret.
+// UpdateSecretRequest: a blank Value keeps the stored value; a new one rotates the secret.
 type UpdateSecretRequest struct {
 	Value       string `json:"value"`
 	Description string `json:"description"`
 }
 
-// SecretReveal is the payload of GET .../secrets/{id}/reveal.
 type SecretReveal struct {
 	Value string `json:"value"`
 }
 
-// Config is a workspace configuration file set. Content never comes back on a
-// list or get — only keys, their sizes and the digest.
+// Config content never comes back on list or get, only keys, sizes and the digest.
 type Config struct {
 	ID          uint           `json:"id"`
 	UID         string         `json:"uid"`
@@ -711,19 +615,15 @@ type UpdateConfigRequest struct {
 	Delimiters  []string          `json:"delimiters,omitempty"`
 }
 
-// ConfigReveal is the decrypted file set (admin only, audited).
 type ConfigReveal struct {
 	Data map[string]string `json:"data"`
 }
 
-// SecretUsage is one app referencing a secret (GET .../secrets/{id}/usage).
 type SecretUsage struct {
 	ID   uint   `json:"id"`
 	Name string `json:"name"`
 }
 
-// ApplyRequest is the body of POST .../apply — a miabi.io/v1 manifest bundle and
-// the converge options.
 type ApplyRequest struct {
 	Manifests string `json:"manifests"`
 	Prune     bool   `json:"prune"`
@@ -734,7 +634,6 @@ type ApplyRequest struct {
 	Force bool `json:"force,omitempty"`
 }
 
-// Change is one planned operation on a resource.
 type Change struct {
 	Action string `json:"action"` // create | update | delete | noop
 	Kind   string `json:"kind"`
@@ -742,12 +641,10 @@ type Change struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// Plan is what a dry-run apply returns.
 type Plan struct {
 	Changes []Change `json:"changes"`
 }
 
-// ApplyFailure is one resource that failed to converge.
 type ApplyFailure struct {
 	Kind   string `json:"kind"`
 	Name   string `json:"name"`
@@ -755,7 +652,6 @@ type ApplyFailure struct {
 	Error  string `json:"error"`
 }
 
-// ApplyResult is what a non-dry-run apply returns.
 type ApplyResult struct {
 	Plan     *Plan          `json:"plan"`
 	Applied  int            `json:"applied"`
@@ -763,9 +659,6 @@ type ApplyResult struct {
 	Failures []ApplyFailure `json:"failures,omitempty"`
 }
 
-// === monitoring, alerts, events ==========================================
-
-// OverviewApp is one application's health in the workspace overview.
 type OverviewApp struct {
 	ID     uint   `json:"id"`
 	Name   string `json:"name"`
@@ -773,7 +666,6 @@ type OverviewApp struct {
 	Health string `json:"health"` // healthy | unhealthy | unknown
 }
 
-// WorkspaceOverview is GET .../overview.
 type WorkspaceOverview struct {
 	Apps         []OverviewApp `json:"apps"`
 	TotalApps    int           `json:"total_apps"`
@@ -784,7 +676,6 @@ type WorkspaceOverview struct {
 	RecentEvents []Event       `json:"recent_events"`
 }
 
-// Alert is a deduplicated workspace alert.
 type Alert struct {
 	ID          uint      `json:"id"`
 	Category    string    `json:"category"`
@@ -799,7 +690,7 @@ type Alert struct {
 	LastSeen    time.Time `json:"last_seen"`
 }
 
-// Event is one timeline event. AppName is only filled on the workspace-wide feed.
+// Event.AppName is only filled on the workspace-wide feed.
 type Event struct {
 	ID            uint              `json:"id"`
 	SubjectType   string            `json:"subject_type,omitempty"`
@@ -814,7 +705,6 @@ type Event struct {
 	CreatedAt     time.Time         `json:"created_at"`
 }
 
-// TrafficSummary is the part of GET .../analytics/summary the CLI reads.
 type TrafficSummary struct {
 	Totals struct {
 		Requests     int64   `json:"requests"`
@@ -831,7 +721,6 @@ type TrafficSummary struct {
 	} `json:"status"`
 }
 
-// Backup is one logical-database backup run.
 type Backup struct {
 	ID          uint       `json:"id"`
 	Number      int        `json:"number"`
@@ -845,7 +734,6 @@ type Backup struct {
 	FinishedAt  *time.Time `json:"finished_at,omitempty"`
 }
 
-// VerifyResult is what a backup verification found.
 type VerifyResult struct {
 	Ref        string   `json:"ref"`
 	OK         bool     `json:"ok"`

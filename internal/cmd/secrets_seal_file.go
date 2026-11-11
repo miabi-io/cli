@@ -34,8 +34,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// sealManifestFile converts the plaintext Secrets of a manifest file into SealedSecrets and writes the result
-// back (inPlace) or to stdout. The sealing key is fetched only when there is something to seal.
+// The sealing key is fetched only when there is something to seal.
 func sealManifestFile(ctx context.Context, path string, inPlace bool) error {
 	if inPlace && path == "-" {
 		return errors.New("--in-place needs a file, not stdin")
@@ -89,8 +88,7 @@ func sealManifestFile(ctx context.Context, path string, inPlace bool) error {
 	return nil
 }
 
-// sealManifests rewrites every kind: Secret carrying a plaintext value — at the top level or inside a
-// Project's spec.resources — as a SealedSecret of the same name, keeping the rest of each document.
+// sealManifests also seals Secrets nested in a Project's spec.resources, keeping the rest of each document.
 func sealManifests(src []byte, key func() (*api.SealingKey, error)) ([]byte, []string, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(src))
 	var docs []*yaml.Node

@@ -71,7 +71,6 @@ var rollbackCmd = &cobra.Command{
 			return err
 		}
 
-		// Resolve the target release id and version for display.
 		var targetID uint
 		var targetVersion int
 		if rollbackToPrevious {
@@ -79,8 +78,7 @@ var rollbackCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			// Releases are newest-first; the previous release is the highest-version
-			// one that is not currently active.
+			// Releases are newest-first; the previous release is the highest-version inactive one.
 			for _, r := range rels {
 				if !r.Active {
 					targetID, targetVersion = r.ID, r.Version

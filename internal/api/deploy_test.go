@@ -81,8 +81,7 @@ func TestDeployWithoutWaitOmitsParam(t *testing.T) {
 	}
 }
 
-// A pipeline-backed app answers with the run; decoding it as a Deployment would
-// leave the caller waiting on deployment #0.
+// A pipeline-backed app answers with the run; decoding it as a Deployment would wait on deployment #0.
 func TestDeployDecodesPipelineRun(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeData(w, `{"kind":"pipeline_run","run":{"id":40,"number":6,"status":"pending"}}`)

@@ -26,15 +26,12 @@ import (
 	"github.com/miabi-io/cli/internal/api"
 )
 
-// tool is one MCP tool: its advertised definition, whether it only reads, and
-// the handler that runs it against the API.
 type tool struct {
 	def      toolDef
 	readOnly bool
 	handler  func(ctx context.Context, s *Server, args map[string]any) (any, error)
 }
 
-// object is a small helper for building a JSON Schema object literal.
 func object(props map[string]any, required ...string) map[string]any {
 	schema := map[string]any{"type": "object", "properties": props}
 	if len(required) > 0 {
@@ -45,11 +42,9 @@ func object(props map[string]any, required ...string) map[string]any {
 
 func str(desc string) map[string]any { return map[string]any{"type": "string", "description": desc} }
 
-// wsProp is the shared optional "workspace" argument.
 var wsProp = map[string]any{"type": "string", "description": "workspace name, UID, or id (default: the CLI's active workspace)"}
 
-// register adds a tool to the catalog. Write tools are only registered when the
-// server is in read-write mode, so read-only servers never advertise them.
+// register drops write tools in read-only mode so they are never advertised.
 func (s *Server) register(t tool) {
 	if !t.readOnly && !s.allowWrite {
 		return
@@ -72,10 +67,7 @@ func (s *Server) toolDefs() []toolDef {
 	return defs
 }
 
-// registerTools installs the standard catalog: read tools always, write tools
-// only under --allow-write.
 func (s *Server) registerTools() {
-	// identity & workspaces
 	s.register(tool{
 		def: toolDef{
 			Name:        "whoami",
@@ -99,7 +91,6 @@ func (s *Server) registerTools() {
 		},
 	})
 
-	// applications
 	s.register(tool{
 		def: toolDef{
 			Name:        "list_apps",
@@ -225,7 +216,6 @@ func (s *Server) registerTools() {
 		},
 	})
 
-	//  databases
 	s.register(tool{
 		def: toolDef{
 			Name:        "list_databases",
@@ -265,7 +255,6 @@ func (s *Server) registerTools() {
 		},
 	})
 
-	// secrets
 	s.register(tool{
 		def: toolDef{
 			Name:        "list_secrets",
@@ -282,7 +271,6 @@ func (s *Server) registerTools() {
 		},
 	})
 
-	// mutating tools (only under --allow-write)
 	s.register(tool{
 		def: toolDef{
 			Name:        "deploy_app",
@@ -340,8 +328,7 @@ func (s *Server) registerTools() {
 	s.registerOpsTools()
 }
 
-// deployPayload keeps a plain deployment's shape unchanged and tags a pipeline
-// run with its kind, mirroring the server's own response.
+// deployPayload tags a pipeline run with its kind, mirroring the server's own response.
 func deployPayload(res *api.DeployResult) any {
 	if res.Deployment != nil {
 		return res.Deployment
@@ -349,9 +336,7 @@ func deployPayload(res *api.DeployResult) any {
 	return map[string]any{"kind": res.Kind, "run": res.Run}
 }
 
-// registerAction registers a mutating app-lifecycle tool whose handler is one of
-// the client's action methods (Start/Stop/RestartApp). destructive tags the tool
-// so clients prompt before calling it.
+// registerAction's destructive flag makes clients prompt before calling the tool.
 func (s *Server) registerAction(name, desc string, destructive bool, fn func(*api.Client, context.Context, string, string) error) {
 	s.register(tool{
 		def: toolDef{
@@ -373,14 +358,11 @@ func (s *Server) registerAction(name, desc string, destructive bool, fn func(*ap
 	})
 }
 
-// resolveWS resolves the target workspace from the optional "workspace" argument,
-// falling back to the CLI's active workspace.
 func (s *Server) resolveWS(ctx context.Context, args map[string]any) (string, error) {
 	return s.client.ResolveWorkspaceName(ctx, optString(args, "workspace"), s.fallbackWS)
 }
 
-// resolveApp resolves the workspace and reads the app reference for an app-scoped tool call. The server
-// resolves the reference (name, uid or id) in the path.
+// resolveApp passes the app reference through; the server resolves name, uid or id.
 func (s *Server) resolveApp(ctx context.Context, args map[string]any) (string, string, error) {
 	ws, err := s.resolveWS(ctx, args)
 	if err != nil {
@@ -393,7 +375,6 @@ func (s *Server) resolveApp(ctx context.Context, args map[string]any) (string, s
 	return ws, ref, nil
 }
 
-// optString returns a string argument, or "" if absent.
 func optString(args map[string]any, key string) string {
 	if v, ok := args[key].(string); ok {
 		return v
@@ -401,7 +382,6 @@ func optString(args map[string]any, key string) string {
 	return ""
 }
 
-// argString returns a required non-empty string argument.
 func argString(args map[string]any, key string) (string, error) {
 	if v, ok := args[key].(string); ok && v != "" {
 		return v, nil
@@ -409,8 +389,7 @@ func argString(args map[string]any, key string) (string, error) {
 	return "", fmt.Errorf("missing required argument %q", key)
 }
 
-// argInt returns a required integer argument. JSON numbers decode to float64, so
-// accept that and a plain int.
+// argInt accepts float64 because JSON numbers decode to it.
 func argInt(args map[string]any, key string) (int, error) {
 	switch v := args[key].(type) {
 	case float64:

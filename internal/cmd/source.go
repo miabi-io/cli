@@ -91,8 +91,7 @@ var appSetSourceCmd = &cobra.Command{
 			return err
 		}
 
-		// Confirm only a genuine switch: editing a tag or a branch is routine, changing what the
-		// app is built from is not, and it discards the other source's configuration.
+		// Confirm only a genuine source switch: it discards the other source's configuration.
 		if !srcYes && !structured() {
 			if app, aerr := c.App(ctx, ws, appRef); aerr == nil && app.SourceType != "" && app.SourceType != req.SourceType {
 				to := "a Docker image"

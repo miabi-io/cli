@@ -26,9 +26,7 @@ import (
 	"time"
 )
 
-// Spinner is a lightweight terminal spinner for long-running waits. On a
-// non-terminal (pipe/CI) it degrades to nothing — the caller's plain status
-// lines carry the information instead.
+// Spinner renders nothing off a TTY; callers' plain status lines carry the information there.
 type Spinner struct {
 	mu     sync.Mutex
 	msg    string
@@ -39,10 +37,8 @@ type Spinner struct {
 
 var frames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
-// NewSpinner creates a spinner with an initial message (not yet started).
 func NewSpinner(msg string) *Spinner { return &Spinner{msg: msg} }
 
-// Start begins animating on stderr. No-op off a TTY.
 func (s *Spinner) Start() {
 	if !IsTerminal() || s.active {
 		return
@@ -62,11 +58,11 @@ func (s *Spinner) Start() {
 			fmt.Fprintf(os.Stderr, "\r%s %s", Cyan(frames[i%len(frames)]), m)
 			i++
 		}
-		draw() // paint immediately so there's no blank gap before the first tick
+		draw()
 		for {
 			select {
 			case <-s.stop:
-				fmt.Fprint(os.Stderr, "\r\033[K") // clear the line
+				fmt.Fprint(os.Stderr, "\r\033[K")
 				return
 			case <-t.C:
 				draw()
@@ -75,14 +71,13 @@ func (s *Spinner) Start() {
 	}()
 }
 
-// Update changes the spinner's message in place.
 func (s *Spinner) Update(msg string) {
 	s.mu.Lock()
 	s.msg = msg
 	s.mu.Unlock()
 }
 
-// Stop halts the animation and clears the line. Safe to call more than once.
+// Stop is safe to call more than once.
 func (s *Spinner) Stop() {
 	if !s.active {
 		return

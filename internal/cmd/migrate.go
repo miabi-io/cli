@@ -226,8 +226,7 @@ func phaseLine(m *api.Migration) string {
 	return line
 }
 
-// reportMigration prints where a settled migration ended, and fails the command when the move did not
-// happen, which is what a script wants to know.
+// reportMigration fails the command when the move did not happen, which is what a script wants to know.
 func reportMigration(m *api.Migration) error {
 	switch m.Status {
 	case "cut_over":

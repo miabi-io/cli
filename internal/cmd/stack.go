@@ -38,14 +38,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// stackCtx cancels on Ctrl-C, so a half-finished converge can still run its cleanup rather than
-// leaving a container mid-pull.
+// stackCtx cancels on Ctrl-C so a half-finished converge still runs its cleanup.
 func stackCtx() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
 
-// openHost resolves the manifest path, checks that this process can write it, and connects to
-// Docker. Every stack command starts here.
 func openHost(file string) (*host.Session, error) {
 	path := host.ManifestPath(file)
 	if err := host.RequireWritable(path); err != nil {
@@ -54,10 +51,7 @@ func openHost(file string) (*host.Session, error) {
 	return host.Open(path, func(f string, a ...any) { fmt.Printf("  "+f+"\n", a...) })
 }
 
-// setupManifestPath decides where a new install's manifest goes. When the resolved path is not
-// writable — the ordinary "ran without sudo" case — it offers the per-user install instead of
-// refusing outright, because that install works: everything a stack command needs is the manifest
-// and the Docker socket, and neither requires being root.
+// An unwritable path offers the per-user install instead of refusing: neither manifest nor socket needs root.
 func setupManifestPath(o *setupOpts) (string, error) {
 	path := host.ManifestPath(o.file)
 	err := host.RequireWritable(path)
@@ -91,23 +85,12 @@ func setupManifestPath(o *setupOpts) (string, error) {
 	return user, nil
 }
 
-// platformRepo is where the control plane is pulled from when the operator names no registry.
 const platformRepo = "miabi/miabi"
 
-// DefaultPlatformImage is the last resort when the version cannot be looked up. It is a floating
-// tag on purpose — there is no fixed version to name at that point — which is why falling back to
-// it is reported rather than silent: :latest costs the automatic rollback (a rollout skips the
-// rollback when the previous reference equals the new one) and makes drift undetectable.
+// DefaultPlatformImage is the floating fallback; :latest loses automatic rollback, so using it is reported.
 const DefaultPlatformImage = platformRepo + ":latest"
 
-// defaultControlPlaneImage is the image `setup` and `upgrade` install when neither --version nor
-// --image was given.
-//
-// The platform version is NOT baked into this binary. The CLI releases on its own cadence — one cut
-// months ago still has to install today's Miabi — so a build-time stamp would pin every install to
-// whatever was current when the CLI was built, and would go stale the moment the platform shipped
-// without the CLI. It is looked up on versions.miabi.io instead, falling back to :latest so a host
-// with no route out still installs rather than refusing outright.
+// The platform version is looked up, not baked in, because the CLI releases on its own cadence.
 func defaultControlPlaneImage() string {
 	ctx, cancel := context.WithTimeout(context.Background(), releaseLookupTimeout)
 	defer cancel()
@@ -123,15 +106,11 @@ func defaultControlPlaneImage() string {
 	return platformRepo + ":" + r.Version
 }
 
-// releaseLookupTimeout sits in front of an install, so it fails fast enough that the operator
-// reaches the --version advice while still paying attention.
+// releaseLookupTimeout is short because it blocks an install the operator is waiting on.
 const releaseLookupTimeout = 20 * time.Second
 
-// imageForVersion turns a bare --version into a reference. setup has no version field on
-// stackcmd.SetupOptions, so the CLI resolves it here and passes an image.
+// imageForVersion exists because stackcmd.SetupOptions has no version field, only an image.
 func imageForVersion(v string) string { return platformRepo + ":" + release.Normalize(v) }
-
-// setup
 
 type setupOpts struct {
 	domain, adminEmail, acmeEmail, controlURL    string
@@ -141,8 +120,7 @@ type setupOpts struct {
 	registryHost, subnet, internalSubnet, file   string
 }
 
-// newSetupCmd builds the install/converge command. It is constructed rather than declared so the
-// verb can be registered under more than one parent; a cobra command may have only one.
+// newSetupCmd is a constructor so the verb can register under several parents; a cobra command has one.
 func newSetupCmd(use string) *cobra.Command {
 	o := &setupOpts{}
 	c := &cobra.Command{
@@ -195,8 +173,7 @@ func runSetup(_ *cobra.Command, o *setupOpts) error {
 	ctx, cancel := stackCtx()
 	defer cancel()
 
-	// --version names a release; --image names a reference. setup takes only the latter, so a
-	// version is turned into one here. An explicit --image always wins.
+	// setup takes only an image, so --version is turned into one here; an explicit --image wins.
 	image := o.image
 	if image == "" && strings.TrimSpace(o.version) != "" {
 		image = imageForVersion(o.version)
@@ -219,9 +196,6 @@ func runSetup(_ *cobra.Command, o *setupOpts) error {
 		"    or `miabi system uninstall` (keeps your data; add --volumes to destroy it).\n")
 	return nil
 }
-
-// ---------------------------------------------------------------------------
-// upgrade
 
 func newUpgradeCmd(use string) *cobra.Command {
 	var image, versionFlag, file string
@@ -279,8 +253,6 @@ func runUpgrade(args []string, image, versionFlag, file string, yes bool) error 
 	}, cliUI{})
 }
 
-// apply
-
 func newApplyCmd() *cobra.Command {
 	var file string
 	var yes bool
@@ -309,11 +281,7 @@ func newApplyCmd() *cobra.Command {
 	return c
 }
 
-// restart
-
-// newRestartCmd restarts containers WITHOUT recreating them, so they re-read what is on disk.
-// Editing the gateway's goma.yml is the obvious case (Goma watches its providers directory, not its
-// base config); a spec change is the obvious non-case.
+// newRestartCmd does not recreate containers, so they re-read what is on disk (e.g. an edited goma.yml).
 func newRestartCmd() *cobra.Command {
 	var file string
 	var yes bool
@@ -344,8 +312,6 @@ func newRestartCmd() *cobra.Command {
 	c.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return c
 }
-
-// status
 
 func newStatusCmd() *cobra.Command {
 	var file string
@@ -406,9 +372,6 @@ func orElse(s, fallback string) string {
 	return s
 }
 
-// ---------------------------------------------------------------------------
-// uninstall
-
 func newUninstallCmd() *cobra.Command {
 	var file string
 	var volumes, yes bool
@@ -439,8 +402,6 @@ func newUninstallCmd() *cobra.Command {
 	c.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return c
 }
-
-// migrate-config
 
 func newMigrateConfigCmd() *cobra.Command {
 	var yes bool

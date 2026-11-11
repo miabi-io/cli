@@ -27,8 +27,6 @@ import (
 	"testing"
 )
 
-// withConfig points MIABI_CONFIG at a temp file seeded with content, and returns
-// its path.
 func withConfig(t *testing.T, content string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "config.yaml")
@@ -65,7 +63,6 @@ func TestMigrateFlatURLToDefaultContext(t *testing.T) {
 }
 
 func TestMigrateServerBlockToDefaultContext(t *testing.T) {
-	// The intermediate single-`server:` form also migrates.
 	withConfig(t, "server:\n  url: https://m.example.com\n  insecure_skip: true\ntoken: t\n")
 	f, err := Load()
 	if err != nil {
@@ -92,7 +89,6 @@ func TestSaveWritesContextsNotLegacy(t *testing.T) {
 			t.Errorf("saved config missing %q:\n%s", want, s)
 		}
 	}
-	// No legacy flat keys at the top level.
 	if strings.HasPrefix(s, "url:") || strings.HasPrefix(s, "server:") || strings.HasPrefix(s, "token:") {
 		t.Errorf("saved config still writes legacy top-level keys:\n%s", s)
 	}
@@ -148,7 +144,6 @@ func TestResolveFlagsOverrideContext(t *testing.T) {
 }
 
 func TestResolveEnvOnlyNoConfig(t *testing.T) {
-	// No config file at all: env alone must resolve (CI path).
 	withConfig(t, "")
 	t.Setenv("MIABI_SERVER", "https://ci.example.com")
 	t.Setenv("MIABI_TOKEN", "ci_token")
@@ -167,7 +162,6 @@ func TestEnsureContextSetsCurrent(t *testing.T) {
 	if f.Current != "staging" || f.Contexts["staging"] != c {
 		t.Fatalf("EnsureContext did not create+select: current=%q", f.Current)
 	}
-	// EnsureCurrent returns it without creating another.
 	if got := f.EnsureCurrent(); got != c {
 		t.Fatal("EnsureCurrent created a new context instead of returning current")
 	}
@@ -180,7 +174,6 @@ func TestTokenStoredBase64RoundTrips(t *testing.T) {
 	if err := Save(f); err != nil {
 		t.Fatal(err)
 	}
-	// On disk: base64, never the plaintext token.
 	s := string(mustRead(t, p))
 	if strings.Contains(s, "mb_secrettoken") {
 		t.Fatalf("plaintext token leaked into the file:\n%s", s)
@@ -188,7 +181,6 @@ func TestTokenStoredBase64RoundTrips(t *testing.T) {
 	if !strings.Contains(s, base64.StdEncoding.EncodeToString([]byte("mb_secrettoken"))) {
 		t.Fatalf("token not base64-encoded in the file:\n%s", s)
 	}
-	// In memory after reload: plaintext.
 	f2, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -199,8 +191,6 @@ func TestTokenStoredBase64RoundTrips(t *testing.T) {
 }
 
 func TestLegacyPlaintextTokenUnderContextStillReads(t *testing.T) {
-	// A context whose token was written plaintext before base64 (mb_ prefix) must
-	// still load correctly.
 	withConfig(t, "current: prod\ncontexts:\n  prod:\n    server: {url: https://x}\n    token: mb_plainlegacy\n")
 	f, err := Load()
 	if err != nil {

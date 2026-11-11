@@ -17,9 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package dockerclient implements the stack engine's Docker seam against a real engine, using the
-// maintained moby/moby client. It is a separate module so the Docker SDK never enters the control
-// plane's dependency graph — the server satisfies the same interface with the client it already has.
+// Package dockerclient is separate so the Docker SDK never enters the control plane's dependency graph.
 package dockerclient
 
 import (
@@ -41,16 +39,12 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// Engine is a [docker.Client] backed by a real Docker engine. Beyond the seam it also exposes
-// Ping and Close, which a caller owning the connection needs but the engine itself never calls.
 type Engine struct {
 	cli *client.Client
 }
 
 var _ docker.Client = (*Engine)(nil)
 
-// New connects to the Docker engine using the standard environment (DOCKER_HOST etc.) with API
-// version negotiation.
 func New() (*Engine, error) {
 	cli, err := client.New(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -59,13 +53,11 @@ func New() (*Engine, error) {
 	return &Engine{cli: cli}, nil
 }
 
-// Ping checks the daemon is reachable and responding.
 func (e *Engine) Ping(ctx context.Context) error {
 	_, err := e.cli.Ping(ctx, client.PingOptions{})
 	return err
 }
 
-// Close releases the underlying HTTP transport.
 func (e *Engine) Close() error { return e.cli.Close() }
 
 func (e *Engine) ListContainers(ctx context.Context, all bool) ([]docker.Container, error) {
@@ -182,9 +174,8 @@ func (e *Engine) RunContainer(ctx context.Context, spec docker.RunSpec) (string,
 			return "", fmt.Errorf("port %q: %w", cp, err)
 		}
 		exposed[p] = struct{}{}
-		hostIP := netip.IPv4Unspecified() // 0.0.0.0 — all interfaces
+		hostIP := netip.IPv4Unspecified()
 		if ip := spec.PortBindIPs[cp]; ip != "" {
-			// publish on a specific interface (e.g. the node's private IP)
 			if hostIP, err = netip.ParseAddr(ip); err != nil {
 				return "", fmt.Errorf("bind IP %q for port %s: %w", ip, cp, err)
 			}
@@ -197,7 +188,7 @@ func (e *Engine) RunContainer(ctx context.Context, spec docker.RunSpec) (string,
 	cfg := &container.Config{
 		Image:        spec.Image,
 		Hostname:     spec.Hostname,
-		User:         spec.User, // "" = image default; "uid:0" under the restricted profile
+		User:         spec.User,
 		Env:          spec.Env,
 		Entrypoint:   spec.Entrypoint,
 		Cmd:          spec.Cmd,
@@ -257,8 +248,6 @@ func (e *Engine) RemoveContainer(ctx context.Context, id string, force bool) err
 	return wrapNotFound(err)
 }
 
-// createOneShot creates (but does not start) a one-shot helper container. Resource limits are
-// honored so callers can cap a build/probe container; one-shots never restart.
 func (e *Engine) createOneShot(ctx context.Context, spec docker.RunSpec) (string, error) {
 	binds := make([]string, 0, len(spec.Mounts)+len(spec.Binds))
 	for vol, path := range spec.Mounts {
@@ -453,8 +442,7 @@ func (e *Engine) collectLogs(ctx context.Context, id string) string {
 	return buf.String()
 }
 
-// managedLabels copies the caller's labels and stamps the Miabi managed marker, so a container or
-// volume this client creates is always recognizable to housekeeping.
+// managedLabels stamps the managed marker so housekeeping always recognizes what this client created.
 func managedLabels(labels map[string]string) map[string]string {
 	out := make(map[string]string, len(labels)+2)
 	for k, v := range labels {
@@ -464,8 +452,6 @@ func managedLabels(labels map[string]string) map[string]string {
 	return out
 }
 
-// networkingConfig renders the spec's networks with their DNS aliases. AliasesByNetwork adds
-// per-network aliases on top of the shared NetworkAliases.
 func networkingConfig(spec docker.RunSpec) *network.NetworkingConfig {
 	if len(spec.Networks) == 0 {
 		return nil
@@ -481,9 +467,7 @@ func networkingConfig(spec docker.RunSpec) *network.NetworkingConfig {
 	return &network.NetworkingConfig{EndpointsConfig: endpoints}
 }
 
-// containerVolumeMounts renders a RunSpec's named volumes and host binds for the HostConfig. Named
-// volumes are bind strings unless NoCopyVolumes is set, in which case they use the Mount API with
-// NoCopy so copy-up can't undo the restricted-profile chown. Host binds stay plain.
+// NoCopyVolumes uses the Mount API with NoCopy so copy-up can't undo the restricted-profile chown.
 func containerVolumeMounts(spec docker.RunSpec) ([]string, []mount.Mount) {
 	binds := make([]string, 0, len(spec.Mounts)+len(spec.Binds))
 	var volMounts []mount.Mount
@@ -554,12 +538,10 @@ func createNetworkOptions(spec docker.NetworkSpec) (client.NetworkCreateOptions,
 	return opts, nil
 }
 
-// restartPolicy maps a RunSpec restart-policy string onto the engine policy. Empty or unrecognized
-// falls back to "unless-stopped", the platform's historical default. "on-failure" may carry a ":N"
-// max-retry suffix.
+// restartPolicy falls back to "unless-stopped", the platform's historical default.
 func restartPolicy(p string) container.RestartPolicy {
 	switch {
-	case p == string(container.RestartPolicyDisabled): // "no"
+	case p == string(container.RestartPolicyDisabled):
 		return container.RestartPolicy{Name: container.RestartPolicyDisabled}
 	case p == string(container.RestartPolicyAlways):
 		return container.RestartPolicy{Name: container.RestartPolicyAlways}
@@ -576,8 +558,6 @@ func restartPolicy(p string) container.RestartPolicy {
 	}
 }
 
-// restartPolicyString renders an engine restart policy back to the string form Miabi stores
-// (e.g. "on-failure:3"). Empty and "no" both map to "no".
 func restartPolicyString(p container.RestartPolicy) string {
 	switch p.Name {
 	case container.RestartPolicyAlways:
@@ -590,7 +570,7 @@ func restartPolicyString(p container.RestartPolicy) string {
 		}
 		return string(container.RestartPolicyOnFailure)
 	default:
-		return string(container.RestartPolicyDisabled) // "no"
+		return string(container.RestartPolicyDisabled)
 	}
 }
 
@@ -614,8 +594,6 @@ func toDeviceRequests(gpus []docker.GPURequest) []container.DeviceRequest {
 	return out
 }
 
-// wrapNotFound normalizes the engine's not-found error to the seam's sentinel, so the stack engine
-// need not know anything about the Docker SDK's error types.
 func wrapNotFound(err error) error {
 	if err != nil && cerrdefs.IsNotFound(err) {
 		return docker.ErrNotFound
@@ -623,8 +601,7 @@ func wrapNotFound(err error) error {
 	return err
 }
 
-// gatewayString renders an optional gateway address; an unset one stays empty rather than
-// rendering as "invalid IP".
+// gatewayString keeps an unset gateway empty rather than rendering it as "invalid IP".
 func gatewayString(a netip.Addr) string {
 	if !a.IsValid() {
 		return ""

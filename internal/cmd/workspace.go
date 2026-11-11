@@ -129,8 +129,7 @@ var workspaceSwitchCmd = &cobra.Command{
 					return err
 				}
 				cur.Workspace = &config.WorkspaceRef{ID: w.ID, Name: w.Name, DisplayName: w.DisplayName}
-				// The bound app belongs to the old workspace — clear it so a stale
-				// app never leaks across a workspace switch.
+				// The bound app belongs to the old workspace, so clear it on a switch.
 				cur.App = nil
 				if err := config.Save(f); err != nil {
 					return err

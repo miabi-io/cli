@@ -42,8 +42,7 @@ func init() {
 
 	envImportCmd.Flags().StringVar(&envFile, "file", "", `path to a .env file ("-" for stdin)`)
 	envImportCmd.Flags().BoolVar(&envSecret, "secret", false, "mark all imported vars as secrets")
-	// Accept --from-file here too, so the flag means the same thing across the CLI
-	// (`secrets set --from-file`, `apps env set --from-file`).
+	// --from-file is accepted so the flag means the same across the CLI (secrets set, apps env set).
 	envImportCmd.Flags().SetNormalizeFunc(func(_ *pflag.FlagSet, name string) pflag.NormalizedName {
 		if name == "from-file" {
 			name = "file"

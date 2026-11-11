@@ -108,9 +108,7 @@ var deployCmd = &cobra.Command{
 	},
 }
 
-// settleDeployment returns dep once it is settled. A server that honoured ?wait
-// usually hands it back settled already; an older one, or one whose wait ran out
-// before our own deadline, is polled for the rest of the time.
+// A server older than ?wait, or whose wait ran out first, returns the deployment unsettled, so poll.
 func settleDeployment(ctx context.Context, c *api.Client, ws string, appRef string, dep *api.Deployment, deadline time.Time) (*api.Deployment, error) {
 	if api.IsSettled(dep.Status) {
 		return dep, nil
@@ -133,8 +131,7 @@ func settleDeployment(ctx context.Context, c *api.Client, ws string, appRef stri
 	return final, nil
 }
 
-// reportSettled prints the outcome of a waited-on deployment and turns a failure
-// into a non-zero exit, so CI fails the step.
+// reportSettled exits non-zero on a failed deployment so CI fails the step.
 func reportSettled(final *api.Deployment) error {
 	if structured() {
 		_ = emit(final)
@@ -155,8 +152,7 @@ func reportSettled(final *api.Deployment) error {
 	return nil
 }
 
-// finishPipelineDeploy handles an app whose deploys run its repository's
-// pipeline: the server answers with the run rather than a deployment.
+// Apps deployed by their repository's pipeline get a run back from the server, not a deployment.
 func finishPipelineDeploy(ctx context.Context, c *api.Client, ws, appRef string, run *api.PipelineRun, wait bool, deadline time.Time) error {
 	if !wait {
 		if structured() {
@@ -198,8 +194,7 @@ func finishPipelineDeploy(ctx context.Context, c *api.Client, ws, appRef string,
 	return nil
 }
 
-// withSpinner runs fn under a spinner when show is set. A server honouring ?wait
-// holds the request for the whole deploy, which would otherwise look like a hang.
+// A server honouring ?wait holds the request for the whole deploy, which would otherwise look like a hang.
 func withSpinner(show bool, msg string, fn func() error) error {
 	if !show {
 		return fn()

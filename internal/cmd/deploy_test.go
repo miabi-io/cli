@@ -30,8 +30,7 @@ import (
 	"github.com/miabi-io/cli/internal/api"
 )
 
-// A server that predates ?wait answers with a pending deployment; --wait must
-// then fall back to polling.
+// A server that predates ?wait answers with a pending deployment; --wait must fall back to polling.
 func TestSettleDeploymentPollsWhenServerDidNotWait(t *testing.T) {
 	polled := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

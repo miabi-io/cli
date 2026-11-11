@@ -17,11 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package release resolves the newest published Miabi platform version.
-//
-// The CLI releases on its own cadence — a CLI cut months ago still has to install today's Miabi —
-// so the platform version cannot be baked into the binary. It is looked up when needed, and an
-// operator can always state it outright with --version or --image instead.
+// Package release looks the platform version up at runtime because the CLI releases on its own cadence.
 package release
 
 import (
@@ -38,7 +34,6 @@ import (
 )
 
 const (
-	// VersionsURL is the platform's entry on versions.miabi.io, written by Miabi's release workflow.
 	VersionsURL  = "https://versions.miabi.io/v1/miabi/latest.json"
 	githubAPI    = "https://api.github.com"
 	releasesPath = "/repos/miabi-io/miabi/releases"
@@ -53,10 +48,8 @@ var (
 	githubBase  = githubAPI
 )
 
-// ReasonSecurity marks a release published to fix a vulnerability.
 const ReasonSecurity = "security"
 
-// Release is the newest stable platform release.
 type Release struct {
 	Version    string
 	Reason     string
@@ -69,11 +62,7 @@ func Latest(ctx context.Context, userAgent string) (string, error) {
 	return r.Version, err
 }
 
-// LatestRelease returns the newest stable platform release. Prereleases are never returned: an
-// unattended `miabi upgrade` must not walk onto a release candidate.
-//
-// userAgent identifies the caller honestly. The request says nothing else about the install: no
-// id, no host, no license.
+// LatestRelease skips prereleases so an unattended upgrade never lands on an RC; it sends only the user agent.
 func LatestRelease(ctx context.Context, userAgent string) (Release, error) {
 	if mirror := strings.TrimRight(strings.TrimSpace(os.Getenv(APIEnv)), "/"); mirror != "" {
 		return fromGitHub(ctx, mirror, userAgent)
@@ -170,8 +159,7 @@ func fromGitHub(ctx context.Context, base, userAgent string) (Release, error) {
 	return Release{}, fmt.Errorf("no published release found at %s%s", base, releasesPath)
 }
 
-// Normalize turns a Git tag into a Docker tag: releases are cut as v1.8.0 and published as 1.8.0.
-// The "v" is stripped only when a digit follows, so a tag like "vnext" is left alone.
+// Normalize strips "v" only before a digit, so a tag like "vnext" is left alone.
 func Normalize(tag string) string {
 	t := strings.TrimSpace(tag)
 	if len(t) > 1 && (t[0] == 'v' || t[0] == 'V') && t[1] >= '0' && t[1] <= '9' {

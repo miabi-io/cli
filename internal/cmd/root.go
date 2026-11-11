@@ -17,8 +17,7 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package cmd is the cobra command tree for the miabi CLI. Each file is one
-// command group; all HTTP work goes through internal/api.
+// Package cmd is the cobra command tree for the miabi CLI; all HTTP work goes through internal/api.
 package cmd
 
 import (
@@ -40,7 +39,6 @@ import (
 // version is overridden at build time via -ldflags.
 var version = "dev"
 
-// Persistent flags shared by every command.
 var (
 	flagContext   string
 	flagServer    string
@@ -55,8 +53,6 @@ var (
 	flagVerbose   bool
 )
 
-// serverFlag returns the effective server URL from the flags: --server, else the
-// deprecated --url.
 func serverFlag() string { return firstNonEmpty(flagServer, flagURL) }
 
 var rootCmd = &cobra.Command{
@@ -72,12 +68,10 @@ var rootCmd = &cobra.Command{
 		"  miabi apps deployments             # deploy history (by number)",
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	// Normalize output/color once for every command.
 	PersistentPreRun: func(_ *cobra.Command, _ []string) {
 		if flagJSON && flagOutput == "table" {
 			flagOutput = "json"
 		}
-		// Structured output and --no-color both force plain (uncolored) text.
 		if flagNoColor || structured() {
 			ui.SetColor(false)
 		}
@@ -110,7 +104,6 @@ func init() {
 	pf.BoolVar(&flagVerbose, "verbose", false, "log HTTP requests to stderr")
 }
 
-// newClient resolves the connection context and returns an API client.
 func newClient() (*api.Client, *config.Effective, error) {
 	eff, err := config.Resolve(config.Flags{
 		Context: flagContext, Server: serverFlag(), Token: flagToken, CA: flagCA, InsecureSkip: flagInsecure,
@@ -118,9 +111,7 @@ func newClient() (*api.Client, *config.Effective, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	// Skipping TLS verification is a foot-gun that persists in a context, so warn
-	// loudly on every use (to stderr; suppressed for structured output so it never
-	// corrupts a machine-readable stream).
+	// TLS skipping persists in a context, so warn on every use; stderr, and never in structured output.
 	if eff.InsecureSkip && !structured() {
 		ui.Warn("TLS verification disabled for %s — this connection can be intercepted.", eff.URL)
 	}
@@ -142,9 +133,7 @@ func bindContext(f *config.File, eff *config.Effective) (*config.Context, error)
 	return f.EnsureSelected(flagContext), nil
 }
 
-// workspaceRef resolves the workspace name (handle) the API addresses by for the
-// current invocation: --workspace, else the persisted active workspace, else a
-// workspace-bound token's own workspace, else the sole accessible workspace.
+// workspaceRef falls back from --workspace to the saved one, a bound token's own, then the sole workspace.
 func workspaceRef(ctx context.Context, c *api.Client, eff *config.Effective) (string, error) {
 	var fallback string
 	if eff.Workspace != nil {
@@ -163,13 +152,9 @@ func workspaceRef(ctx context.Context, c *api.Client, eff *config.Effective) (st
 	return c.ResolveWorkspaceName(ctx, flagWorkspace, fallback)
 }
 
-// itoa is a terse strconv.Itoa for building table cells.
 func itoa(n int) string { return strconv.Itoa(n) }
 
-// readFileOrStdin reads a value from path, or from stdin when path is "-". The
-// trailing newline is trimmed, so `printf '%s\n' secret > f` and `echo secret |
-// … -` both yield the value without a stray \n. Reading from a file or a pipe is
-// how a secret stays out of your shell history.
+// readFileOrStdin trims the trailing newline so `echo secret | … -` yields the value without a stray \n.
 func readFileOrStdin(path string) (string, error) {
 	var (
 		b   []byte
@@ -186,12 +171,8 @@ func readFileOrStdin(path string) (string, error) {
 	return strings.TrimRight(string(b), "\n"), nil
 }
 
-// structured reports whether the user asked for machine-readable output
-// (--json or -o json|yaml), in which case commands skip their human rendering.
 func structured() bool { return flagJSON || flagOutput == "json" || flagOutput == "yaml" }
 
-// emit renders v in the requested structured format. Commands call it only when
-// structured() is true.
 func emit(v any) error {
 	if flagOutput == "yaml" {
 		return yaml.NewEncoder(os.Stdout).Encode(v)
@@ -201,9 +182,7 @@ func emit(v any) error {
 	return enc.Encode(v)
 }
 
-// resolveAppRef picks the target application for an app-scoped command: an explicit reference (the
-// command's positional arg) wins, else the app bound by `miabi use`, else a helpful error. The server
-// resolves a name, uid or id in the path, so no request is needed here.
+// resolveAppRef needs no request: the server resolves a name, uid or id in the path.
 func resolveAppRef(eff *config.Effective, ref string) (string, error) {
 	if ref == "" && eff.App != nil {
 		if eff.App.Name != "" {
@@ -218,8 +197,6 @@ func resolveAppRef(eff *config.Effective, ref string) (string, error) {
 	return ref, nil
 }
 
-// appArg pulls the optional leading app reference from a command's args: it
-// returns args[0] when present (else ""), for feeding to resolveAppRef.
 func appArg(args []string) string {
 	if len(args) > 0 {
 		return args[0]
@@ -227,8 +204,6 @@ func appArg(args []string) string {
 	return ""
 }
 
-// completeApps is a cobra ValidArgsFunction that tab-completes app handles in the
-// active workspace. Best-effort: any error yields no completions.
 func completeApps(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp

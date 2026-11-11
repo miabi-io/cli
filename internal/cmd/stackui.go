@@ -25,9 +25,7 @@ import (
 	"github.com/miabi-io/cli/internal/ui"
 )
 
-// cliUI renders stackcmd's output the way the rest of the CLI looks — colored, with the same
-// symbols as every other command. The server image implements the same interface with plain fmt,
-// which is the only thing that should differ between the two front-ends.
+// cliUI is the colored front-end for stackcmd; the server image implements the same interface with plain fmt.
 type cliUI struct{}
 
 func (cliUI) Printf(format string, a ...any)  { fmt.Printf(format, a...) }

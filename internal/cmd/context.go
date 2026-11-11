@@ -127,8 +127,7 @@ var contextDeleteCmd = &cobra.Command{
 			return fmt.Errorf("no context named %q", name)
 		}
 		delete(f.Contexts, name)
-		// If we removed the current context, clear (or repoint to the sole remaining
-		// one) so later commands don't reference a missing context.
+		// Repoint (or clear) the current context so later commands don't reference a missing one.
 		if f.Current == name {
 			f.Current = ""
 			if names := f.ContextNames(); len(names) == 1 {
@@ -146,7 +145,7 @@ var contextDeleteCmd = &cobra.Command{
 	},
 }
 
-// contextView is the structured (`-o json`) shape of one context — never the token.
+// contextView is the -o json shape of a context; it must never carry the token.
 type contextView struct {
 	Name      string `json:"name"`
 	Current   bool   `json:"current"`
@@ -192,7 +191,6 @@ func contextApp(c *config.Context) string {
 	return c.App.Name
 }
 
-// completeContexts provides shell completion of context names.
 func completeContexts(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 	f, err := config.Load()
 	if err != nil {

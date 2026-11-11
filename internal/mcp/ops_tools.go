@@ -32,8 +32,6 @@ var (
 	alertProp     = map[string]any{"type": "integer", "description": "the alert id (from list_alerts)"}
 )
 
-// registerOpsTools installs the operational tools: health, alerts, events,
-// traffic and database backups.
 func (s *Server) registerOpsTools() {
 	s.register(tool{
 		def: toolDef{
@@ -213,8 +211,6 @@ func (s *Server) registerAlertAction(name, desc string, fn func(*api.Client, con
 	})
 }
 
-// resolveLogicalDB resolves the workspace, the instance named by "database" and
-// the logical database named by the optional "db".
 func (s *Server) resolveLogicalDB(ctx context.Context, args map[string]any) (ws string, id, dbID uint, err error) {
 	if ws, err = s.resolveWS(ctx, args); err != nil {
 		return
@@ -230,13 +226,11 @@ func (s *Server) resolveLogicalDB(ctx context.Context, args map[string]any) (ws 
 	return
 }
 
-// optBool returns a boolean argument, or false if absent.
 func optBool(args map[string]any, key string) bool {
 	v, _ := args[key].(bool)
 	return v
 }
 
-// optInt returns an integer argument, or def if absent or not a number.
 func optInt(args map[string]any, key string, def int) int {
 	if n, err := argInt(args, key); err == nil {
 		return n

@@ -157,8 +157,7 @@ var pipelineRerunCmd = &cobra.Command{
 	},
 }
 
-// reportRun prints (or emits) a freshly queued run. A cold build is called out because it is the
-// difference between a run that takes seconds and one that takes minutes.
+// A cold build is called out: it is the difference between a run taking seconds and one taking minutes.
 func reportRun(run *api.PipelineRun, ref string) error {
 	if structured() {
 		return emit(run)

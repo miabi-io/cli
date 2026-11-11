@@ -401,8 +401,7 @@ func resolveConfig(ctx context.Context, c *api.Client, ws, ref string) (*api.Con
 	return c.Config(ctx, ws, id)
 }
 
-// pickKey resolves the file to act on: the explicit argument, or the only file
-// when the config holds one. Guessing among several would edit the wrong file.
+// Guessing among several files would edit the wrong one, so only a single-file config is implied.
 func pickKey(cfg *api.Config, data map[string]string, args []string) (string, error) {
 	if len(args) == 2 {
 		if _, ok := data[args[1]]; !ok {
@@ -418,9 +417,7 @@ func pickKey(cfg *api.Config, data map[string]string, args []string) (string, er
 	return "", fmt.Errorf("config %q holds %d files — name one: %s", cfg.Name, len(data), strings.Join(cfg.Keys, ", "))
 }
 
-// collectFiles reads --from-file and --from-dir into the file set. A key is
-// inferred from the basename unless given as key=path; stdin has no basename to
-// infer from, so it requires the explicit form.
+// stdin has no basename to infer a key from, so it requires the key=path form.
 func collectFiles() (map[string]string, error) {
 	data := map[string]string{}
 	for _, spec := range configFromFile {
@@ -494,8 +491,7 @@ func parseDelimiters(s string) ([]string, error) {
 	return []string{left, right}, nil
 }
 
-// confirmRedeploy names the apps a content change will restart. A config edit
-// restarting production apps should never be a silent side effect.
+// A config edit restarting production apps should never be a silent side effect.
 func confirmRedeploy(ctx context.Context, c *api.Client, ws string, cfg *api.Config) error {
 	if configSetYes || structured() {
 		return nil

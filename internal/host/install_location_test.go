@@ -25,8 +25,7 @@ import (
 	"testing"
 )
 
-// Two installs on one host converge the same containers against the same Docker daemon, so setup
-// has to see the other one before it makes a second.
+// Two installs on one daemon converge the same containers, so setup must see the other one first.
 func TestOtherInstall(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -47,14 +46,11 @@ func TestOtherInstall(t *testing.T) {
 	if got := OtherInstall(user); got != "" {
 		t.Errorf("OtherInstall(%q) = %q, want none — that is the install being asked about", user, got)
 	}
-	// Seen from anywhere else, it is.
 	if got := OtherInstall("/srv/elsewhere/miabi.yaml"); got != user {
 		t.Errorf("OtherInstall = %q, want the per-user install at %q", got, user)
 	}
 }
 
-// UserManifestPath puts the manifest beside the CLI's own config, and the gateway config lands
-// next to it because everything is resolved from the manifest's directory.
 func TestUserManifestPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -65,9 +61,7 @@ func TestUserManifestPath(t *testing.T) {
 	}
 }
 
-// RequireWritable asks whether the file can be written, not whether the caller is root: a
-// directory that does not exist yet is writable when its parent is, which is the ordinary case for
-// a fresh ~/.miabi.
+// A missing directory is writable when its parent is, the ordinary case for a fresh ~/.miabi.
 func TestRequireWritable(t *testing.T) {
 	home := t.TempDir()
 
@@ -90,8 +84,7 @@ func TestRequireWritable(t *testing.T) {
 	}
 }
 
-// A manifest that exists but belongs to someone else is a permission problem, not a missing one —
-// and the message has to say which, because the remedies differ.
+// An unreadable manifest must not be reported as missing: the remedies differ.
 func TestRequireReadable(t *testing.T) {
 	home := t.TempDir()
 

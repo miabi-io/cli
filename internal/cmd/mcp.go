@@ -42,10 +42,7 @@ func init() {
 	rootCmd.AddCommand(mcpCmd)
 }
 
-// scopeAdvice reports the mismatch between what this server exposes and what the token may
-// actually do, or "" when they agree. Read-only mode with a broader token is the case that
-// matters: the agent cannot see the mutating tools, but anything else holding the token can still
-// use them, so the restriction is a UI convenience rather than a boundary.
+// Read-only mode only hides mutating tools from the agent; anything else holding the token can still use them.
 func scopeAdvice(scopes []string, allowWrite bool) string {
 	granted := map[string]bool{}
 	for _, s := range scopes {
@@ -97,13 +94,10 @@ var mcpCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		// Best-effort: resolve the active workspace once so tool calls that omit a
-		// workspace argument have a default. A failure here is non-fatal — tools
-		// can still take an explicit workspace.
+		// Best-effort workspace default for tool calls; tools can still take an explicit workspace.
 		fallbackWS, _ := workspaceRef(ctx, c, eff)
 
-		// The read-only default is a client-side choice: the server authorizes the token, not the
-		// tool list. Say so when the two disagree, on stderr — stdout belongs to the protocol.
+		// The server authorizes the token, not the tool list; warn on stderr since stdout is the protocol's.
 		if me, err := c.Me(ctx); err == nil {
 			if msg := scopeAdvice(me.Auth.Scopes, mcpAllowWrite); msg != "" {
 				cmd.PrintErrln(msg)

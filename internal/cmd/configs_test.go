@@ -55,8 +55,7 @@ func TestCollectFilesInfersKeyFromBasename(t *testing.T) {
 	}
 }
 
-// Stdin has no basename, so guessing a key would produce a config whose only
-// file is named "-".
+// Stdin has no basename, so a guessed key would name the config's only file "-".
 func TestCollectFilesRequiresKeyForStdin(t *testing.T) {
 	t.Cleanup(func() { configFromFile = nil })
 	configFromFile = []string{"-"}

@@ -29,9 +29,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// stackEnvOpts is the flag surface shared by the env verbs. Named apart from the app-level `env`
-// command in this package, which edits an application's variables over the API rather than the
-// installed stack's manifest on this host.
+// stackEnvOpts edits the installed stack's manifest, unlike the API-backed app-level env command.
 type stackEnvOpts struct {
 	gateway bool
 	apply   bool
@@ -44,8 +42,7 @@ func (o *stackEnvOpts) options() stackcmd.EnvOptions {
 	return stackcmd.EnvOptions{Gateway: o.gateway, Apply: o.apply, Yes: o.yes}
 }
 
-// newStackEnvCmd builds the env command group. Constructed rather than declared so it can be
-// registered under both `stack` and `setup` — a cobra command may have only one parent.
+// Constructed rather than declared so it can register under both stack and setup (one parent per command).
 func newStackEnvCmd() *cobra.Command {
 	o := &stackEnvOpts{}
 	c := &cobra.Command{
@@ -77,9 +74,7 @@ func newStackEnvCmd() *cobra.Command {
 	return c
 }
 
-// readPath resolves the manifest for the read-only verbs. They need no Docker connection — only the
-// file — and it is mode 0600, so say who can read it rather than letting it fail as a bare
-// permission error the operator has to interpret.
+// readPath explains who can read the 0600 manifest rather than failing with a bare permission error.
 func readPath(o *stackEnvOpts) (string, error) {
 	path := host.ManifestPath(o.file)
 	if err := host.RequireReadable(path); err != nil {
@@ -140,8 +135,7 @@ func newStackEnvGetCmd(o *stackEnvOpts) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// Distinguish "set to empty" from "not set": printing a blank line for both would hide
-			// which one an operator is looking at.
+			// Distinguish "set to empty" from "not set"; a blank line for both would hide which one it is.
 			if !found {
 				return fmt.Errorf("%s is not set in the manifest", args[0])
 			}
@@ -196,7 +190,7 @@ func newStackEnvUnsetCmd(o *stackEnvOpts) *cobra.Command {
 
 func stackEnvWriteFlags(c *cobra.Command, o *stackEnvOpts) {
 	c.Flags().BoolVar(&o.apply, "apply", false, "converge the stack right after saving")
-	// Saving without applying is now the default; the flag stays so existing scripts keep working.
+	// The flag stays so existing scripts keep working.
 	c.Flags().BoolVar(&o.noApply, "no-apply", false, "")
 	_ = c.Flags().MarkDeprecated("no-apply", "saving without applying is now the default")
 	c.Flags().BoolVarP(&o.yes, "yes", "y", false, "skip the confirmation prompt")

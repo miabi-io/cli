@@ -28,8 +28,7 @@ import (
 	"time"
 )
 
-// ServeHTTP runs the server over the MCP Streamable HTTP transport at addr,
-// exposing a single JSON-RPC endpoint at /mcp.
+// ServeHTTP serves the MCP Streamable HTTP transport with a single JSON-RPC endpoint at /mcp.
 func (s *Server) ServeHTTP(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp", s.httpHandler)
@@ -61,7 +60,7 @@ func (s *Server) ServeHTTP(ctx context.Context, addr string) error {
 func (s *Server) httpHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
-		// Guard against DNS-rebinding when bound to a loopback address
+		// Guard against DNS rebinding when bound to a loopback address.
 		if !originAllowed(r.Header.Get("Origin")) {
 			http.Error(w, "forbidden origin", http.StatusForbidden)
 			return
@@ -73,7 +72,7 @@ func (s *Server) httpHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		resp := s.handle(r.Context(), req)
 		if resp == nil {
-			w.WriteHeader(http.StatusAccepted) // a notification: accepted, no body
+			w.WriteHeader(http.StatusAccepted) // the transport spec answers notifications with 202 and no body
 			return
 		}
 		writeJSON(w, http.StatusOK, resp)
@@ -91,8 +90,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// originAllowed permits requests with no Origin (non-browser clients) or an
-// Origin whose host is loopback.
+// originAllowed permits a missing Origin (non-browser clients) or a loopback one.
 func originAllowed(origin string) bool {
 	if origin == "" {
 		return true

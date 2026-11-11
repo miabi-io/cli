@@ -31,9 +31,7 @@ import (
 	"github.com/miabi-io/cli/internal/api"
 )
 
-// Server serves MCP over a stdio pair or HTTP. It holds one API client and a
-// resolved fallback workspace (the CLI's active/bound workspace, used when a
-// tool or resource omits a workspace).
+// Server serves MCP over stdio or HTTP against one API client.
 type Server struct {
 	client     *api.Client
 	fallbackWS string
@@ -41,32 +39,25 @@ type Server struct {
 	version    string
 
 	tools   map[string]tool
-	order   []string // tool names in registration order (stable tools/list output)
-	prompts []prompt // registration order
+	order   []string // keeps tools/list output stable
+	prompts []prompt
 
 	enc   *json.Encoder
 	encMu sync.Mutex // serializes stdio writes
 	logf  func(format string, args ...any)
 }
 
-// Options configures a Server.
 type Options struct {
 	Client *api.Client
-	// FallbackWorkspace is the workspace name used when a call omits the
-	// "workspace" argument (typically the CLI's active/bound workspace). May be
-	// empty, in which case calls require an explicit workspace unless the token
-	// can see exactly one.
+	// FallbackWorkspace may be empty; calls then need a workspace unless the token sees exactly one.
 	FallbackWorkspace string
-	// AllowWrite enables the mutating tools (deploy, restart, rollback, …). When
-	// false the server is strictly read-only and those tools are not advertised.
+	// Without AllowWrite the mutating tools are not even advertised.
 	AllowWrite bool
 	Version    string
-	// Logf sinks diagnostics. On stdio the protocol owns stdout, so logs must go
-	// to stderr (or nowhere); never to stdout.
+	// Logf must never write to stdout: on stdio the protocol owns it.
 	Logf func(format string, args ...any)
 }
 
-// New builds a Server with the standard tool and prompt catalogs registered.
 func New(o Options) *Server {
 	logf := o.Logf
 	if logf == nil {
@@ -85,13 +76,10 @@ func New(o Options) *Server {
 	return s
 }
 
-// Serve runs the stdio read-dispatch-reply loop until in reaches EOF or ctx is
-// cancelled. Each JSON value on in is one JSON-RPC message; each reply is one on
-// out. Returns nil on a clean EOF (the client closed the pipe).
+// Serve returns nil on a clean EOF, when the client closed the pipe.
 func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	s.enc = json.NewEncoder(out)
-	// A decoder reads successive JSON values regardless of the newline framing,
-	// which tolerates both pretty- and compact-printed clients.
+	// A decoder rather than line framing tolerates both pretty- and compact-printed clients.
 	dec := json.NewDecoder(bufio.NewReaderSize(in, 1<<20))
 
 	for {
@@ -103,8 +91,7 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
-			// A malformed message is unrecoverable on a stream decoder (we can't
-			// find the next boundary), so report and stop.
+			// A stream decoder can't find the next boundary after malformed input, so stop.
 			s.writeResp(respondErr(nil, &rpcError{Code: codeParse, Message: "parse error: " + err.Error()}))
 			return nil
 		}
@@ -114,15 +101,13 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	}
 }
 
-// handle routes one request to its handler and returns the reply, or nil when the
-// request is a notification (which gets none). It is transport-agnostic: both the
-// stdio loop and the HTTP handler call it.
+// handle returns nil for notifications; both the stdio and HTTP transports call it.
 func (s *Server) handle(ctx context.Context, req rpcRequest) *rpcResponse {
 	switch req.Method {
 	case "initialize":
 		return respondOK(req.ID, s.handleInitialize())
 	case "notifications/initialized", "notifications/cancelled":
-		return nil // client-side lifecycle notifications; nothing to do
+		return nil
 	case "ping":
 		return respondOK(req.ID, map[string]any{})
 	case "tools/list":
@@ -185,10 +170,7 @@ func (s *Server) handleInitialize() initializeResult {
 	}
 }
 
-// handleToolCall decodes the params, dispatches to the named tool, and wraps the
-// result. A tool-level error (bad args, API failure) is returned inside a
-// successful result with IsError=true, so the agent can read and react to it;
-// only a malformed request yields an rpcError.
+// handleToolCall returns tool errors inside a successful result so the agent can react to them.
 func (s *Server) handleToolCall(ctx context.Context, raw json.RawMessage) (*callToolResult, *rpcError) {
 	var p callToolParams
 	if err := json.Unmarshal(raw, &p); err != nil {
@@ -198,8 +180,7 @@ func (s *Server) handleToolCall(ctx context.Context, raw json.RawMessage) (*call
 	if !ok {
 		return nil, &rpcError{Code: codeMethodNotFound, Message: "unknown tool: " + p.Name}
 	}
-	// Defense in depth: a write tool must never run in read-only mode even if it
-	// somehow appeared in the catalog.
+	// Defense in depth: never run a write tool in read-only mode, even if it reached the catalog.
 	if !t.readOnly && !s.allowWrite {
 		return &callToolResult{Content: textContent("tool \"" + p.Name + "\" is disabled: start the server with --allow-write to enable mutating tools"), IsError: true}, nil
 	}
@@ -210,7 +191,7 @@ func (s *Server) handleToolCall(ctx context.Context, raw json.RawMessage) (*call
 	return &callToolResult{Content: textContent(jsonString(out))}, nil
 }
 
-// respondOK builds a success response, or nil for a notification (no id).
+// respondOK returns nil for a notification (no id).
 func respondOK(id json.RawMessage, result any) *rpcResponse {
 	if id == nil {
 		return nil
@@ -218,14 +199,11 @@ func respondOK(id json.RawMessage, result any) *rpcResponse {
 	return &rpcResponse{JSONRPC: "2.0", ID: id, Result: result}
 }
 
-// respondErr builds an error response. Unlike respondOK it is emitted even for a
-// nil id, so a client waiting on a top-level failure (e.g. parse error) isn't
-// left hanging.
+// respondErr replies even for a nil id so a client isn't left hanging on a parse error.
 func respondErr(id json.RawMessage, rerr *rpcError) *rpcResponse {
 	return &rpcResponse{JSONRPC: "2.0", ID: id, Error: rerr}
 }
 
-// writeResp emits one response on the stdio encoder under the write lock.
 func (s *Server) writeResp(resp *rpcResponse) {
 	if resp == nil {
 		return
@@ -237,8 +215,6 @@ func (s *Server) writeResp(resp *rpcResponse) {
 	}
 }
 
-// jsonString renders v as indented JSON for a text content block, falling back
-// to a Go representation if it somehow can't be marshalled.
 func jsonString(v any) string {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {

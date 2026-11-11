@@ -30,7 +30,6 @@ import (
 )
 
 func init() {
-	// Instance lifecycle.
 	dbCreateCmd.Flags().StringVar(&dbEngine, "engine", "", "engine: postgres | mysql | mariadb | redis | mongodb | libsql (required)")
 	dbCreateCmd.Flags().StringVar(&dbVersion, "version", "", "engine version (default: the engine's default)")
 	dbCreateCmd.Flags().IntVar(&dbSizeMB, "size-mb", 0, "data-volume capacity in MB (0 = unspecified)")
@@ -46,12 +45,10 @@ func init() {
 
 	dbRmCmd.Flags().BoolVarP(&dbRmYes, "yes", "y", false, "skip the confirmation prompt")
 
-	// Logical-database subcommands.
 	dbCreateLogicalCmd.Flags().StringVar(&dbLogicalApp, "app", "", "attach the new database to this app (inject connection env)")
 	dbRmLogicalCmd.Flags().BoolVarP(&dbLogicalRmYes, "yes", "y", false, "skip the confirmation prompt")
 	dbDatabasesCmd.AddCommand(dbCreateLogicalCmd, dbConnLogicalCmd, dbRmLogicalCmd)
 
-	// Attach instance-ref completion to every command that takes one.
 	for _, c := range []*cobra.Command{dbGetCmd, dbStartCmd, dbStopCmd, dbRestartCmd, dbLogsCmd, dbCredsCmd, dbUpgradeCmd, dbRmCmd, dbDatabasesCmd, dbCreateLogicalCmd, dbConnLogicalCmd, dbRmLogicalCmd} {
 		c.ValidArgsFunction = completeDatabases
 	}
@@ -86,8 +83,6 @@ var dbCmd = &cobra.Command{
 		"  miabi db databases create shop app_prod --app web",
 }
 
-// dbConn resolves the connection context, workspace, and instance id from a
-// single positional argument (name or id) — the shared preamble for db commands.
 func dbConn(ctx context.Context, ref string) (*api.Client, string, uint, error) {
 	c, eff, err := newClient()
 	if err != nil {
@@ -235,7 +230,6 @@ var dbGetCmd = &cobra.Command{
 	},
 }
 
-// lifecycleCmd builds a start/stop/restart command sharing one shape.
 func lifecycleCmd(use, short, verb string, fn func(*api.Client, context.Context, string, uint) error) *cobra.Command {
 	return &cobra.Command{
 		Use:   use + " <db>",
@@ -368,8 +362,6 @@ var dbRmCmd = &cobra.Command{
 	},
 }
 
-// --- logical databases -----------------------------------------------------
-
 var dbDatabasesCmd = &cobra.Command{
 	Use:     "databases <db>",
 	Aliases: []string{"dbs"},
@@ -496,7 +488,6 @@ var dbRmLogicalCmd = &cobra.Command{
 	},
 }
 
-// resolveLogicalDB maps a logical-database name (or numeric id) to its id.
 func resolveLogicalDB(ctx context.Context, c *api.Client, ws string, instID uint, ref string) (uint, error) {
 	dbs, err := c.LogicalDatabases(ctx, ws, instID)
 	if err != nil {
@@ -510,8 +501,7 @@ func resolveLogicalDB(ctx context.Context, c *api.Client, ws string, instID uint
 	return 0, fmt.Errorf("database %q not found on this instance", ref)
 }
 
-// printConnection renders a revealed connection; the password is shown because
-// the command exists to reveal it (admin-gated server-side).
+// The password is shown because revealing it is the command's purpose (admin-gated server-side).
 func printConnection(info *api.ConnectionInfo) {
 	ui.Detail("Host:     %s", info.Host)
 	ui.Detail("Port:     %d", info.Port)
@@ -523,7 +513,6 @@ func printConnection(info *api.ConnectionInfo) {
 	ui.Detail("URI:      %s", info.URI)
 }
 
-// completeDatabases tab-completes database instance handles in the active workspace.
 func completeDatabases(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
@@ -550,7 +539,6 @@ func completeDatabases(_ *cobra.Command, args []string, toComplete string) ([]st
 	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
-// humanBytes renders a byte count as a short human string (B/KB/MB/GB/TB).
 func humanBytes(n int64) string {
 	if n <= 0 {
 		return "-"
