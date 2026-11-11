@@ -24,11 +24,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/miabi-io/cli/internal/api"
 	"github.com/spf13/cobra"
@@ -43,7 +45,7 @@ var (
 
 func init() {
 	f := applyCmd.Flags()
-	f.StringArrayVarP(&applyFiles, "file", "f", nil, "manifest file or directory; repeat for several, or '-' for stdin (required)")
+	f.StringArrayVarP(&applyFiles, "file", "f", nil, "manifest file, directory or http(s) URL; repeat for several, or '-' for stdin (required)")
 	f.BoolVar(&applyPrune, "prune", false, "delete managed resources absent from the bundle")
 	f.BoolVar(&applyDryRun, "dry-run", false, "show the plan without applying")
 	f.BoolVar(&applyForce, "force", false, "change resources a GitOps project owns (its next sync reverts them)")
@@ -110,8 +112,9 @@ var applyCmd = &cobra.Command{
 }
 
 // readManifests concatenates the given files into one multi-document bundle,
-// separating them with the YAML document marker. "-" reads stdin, and a
-// directory reads every .yaml and .yml file under it, as a Git source does.
+// separating them with the YAML document marker. "-" reads stdin, an http(s)
+// URL is fetched, and a directory reads every .yaml and .yml file under it, as
+// a Git source does.
 func readManifests(files []string) (string, error) {
 	var docs []string
 	add := func(data []byte) {
@@ -124,6 +127,14 @@ func readManifests(files []string) (string, error) {
 			data, err := io.ReadAll(os.Stdin)
 			if err != nil {
 				return "", fmt.Errorf("read stdin: %w", err)
+			}
+			add(data)
+			continue
+		}
+		if isManifestURL(name) {
+			data, err := fetchManifest(name)
+			if err != nil {
+				return "", err
 			}
 			add(data)
 			continue
@@ -141,6 +152,40 @@ func readManifests(files []string) (string, error) {
 		}
 	}
 	return strings.Join(docs, "\n---\n"), nil
+}
+
+const maxManifestBytes = 10 << 20
+
+var manifestHTTP = &http.Client{Timeout: 30 * time.Second}
+
+func isManifestURL(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://")
+}
+
+// fetchManifest GETs a manifest without the CLI's credentials, which belong to the Miabi API only.
+func fetchManifest(url string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fetch %s: %w", url, err)
+	}
+	req.Header.Set("User-Agent", "miabi-cli/"+api.Version)
+	resp, err := manifestHTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, fmt.Errorf("fetch %s: %s", url, resp.Status)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxManifestBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("fetch %s: %w", url, err)
+	}
+	if len(data) > maxManifestBytes {
+		return nil, fmt.Errorf("fetch %s: larger than %d MiB", url, maxManifestBytes>>20)
+	}
+	return data, nil
 }
 
 // manifestPaths expands name to the files it stands for: itself, or for a
