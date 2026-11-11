@@ -87,4 +87,3 @@ spec:
     - www.example.com
   app: web
   port: 8080
-  tls: acme
