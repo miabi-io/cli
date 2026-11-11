@@ -123,6 +123,7 @@ argument** — or you can bind a default once with `miabi use <app>` and omit it
 ```
 miabi whoami                       # identity, scopes, active workspace + app
 miabi workspace ls|show|switch     # set the active workspace context (alias: ws)
+miabi workspace migrate --from old --to new -w acme   # move a workspace to another Miabi
 miabi use web                      # bind a default app (per workspace)
 
 miabi apps ls                      # list applications (→ marks the bound app)
@@ -155,7 +156,7 @@ miabi delete -f stack.yaml [--dry-run]            # delete exactly the resources
 
 ### Managing a host
 
-`setup`, `upgrade` and `stack …` are the exception to "API client": they act on the
+`setup`, `upgrade` and `system …` are the exception to "API client": they act on the
 **machine they run on**, through its Docker socket, and never call the HTTP API. This is
 what `curl -fsSL https://get.miabi.io | sudo bash` installs and then runs.
 
@@ -164,11 +165,15 @@ miabi setup [--domain miabi.example.com] [--image miabi/miabi:1.7.3] [--yes]
                                               # install, or converge an existing install
 miabi upgrade [component] [--version 1.8.0 | --image <ref>] [--yes]
                                               # roll forward; rolls back if it never gets healthy
-miabi stack status                            # what runs, its health, drift from the manifest
-miabi stack restart [component] [--yes]       # restart in place, re-reading on-disk config
-miabi stack uninstall [--volumes] [--yes]     # --volumes also destroys the database
-miabi stack migrate-config                    # /etc/miabi/stack.yaml -> /etc/miabi/miabi.yaml
+miabi system status                           # what runs, its health, drift from the manifest
+miabi system restart [component] [--yes]      # restart in place, re-reading on-disk config
+miabi system env set KEY=VALUE                # change the manifest's env; `system apply` makes it live
+miabi system backup                           # dump the platform database (`backups`, `restore`)
+miabi system uninstall [--volumes] [--yes]    # --volumes also destroys the database
+miabi system config migrate                   # /etc/miabi/stack.yaml -> /etc/miabi/miabi.yaml
 ```
+
+These commands were `miabi stack …` before; that spelling still works and prints the new one.
 
 All of them need **root** and a Linux or macOS Docker host. `setup` is idempotent: re-run
 it and the stack converges to `/etc/miabi/miabi.yaml`, keeping the stored secrets. `-f,
@@ -331,6 +336,46 @@ copy and a deploy. `--db` takes `INSTANCE=move`, `=new` or `=existing:<instance-
 `migrate` exits non-zero when the move fails or is rolled back. The old copy is kept
 for 7 days: `rollback` returns to it (changes made since the cutover are lost),
 `finalize` deletes it now.
+
+### Moving a workspace to another Miabi
+
+Both servers need `MIABI_MIGRATION_ENABLED=true`. The workspace's owner starts a migration on the
+source and gets a **migration code**, shown once; the target imports the workspace with it. A
+workspace code works for one completed import and then closes itself; it also expires (24h by
+default, 7 days at most) and can be cancelled. Starting again replaces the open code.
+
+```bash
+# on the source
+miabi workspace migration start -w acme [--expires 6h]   # prints the code once
+miabi workspace migration status -w acme                  # open migration, frozen state, past imports
+miabi workspace migration cancel -w acme                  # the code stops working
+
+# on the target: paste the code when asked (keeps it out of your shell history)
+miabi workspace import --code-file - [--freeze] [--deploy] [--retire] [--new-name acme-eu]
+```
+
+`import` first shows what the code opens (apps, databases, volumes, size), then asks to go ahead,
+follows the move and prints the report. A platform admin can open every workspace with
+`miabi workspace migration start --instance`; the target then picks one with `-w <workspace>`.
+
+With both servers saved as contexts (`miabi login --context old …`, `miabi login --context new …`),
+one command starts the migration on the source, imports on the target, follows the move and
+prints the report:
+
+```bash
+miabi workspace migrate --from old --to new -w acme --rehearse   # configuration only, to check the move
+miabi workspace migrate --from old --to new -w acme --freeze --deploy
+miabi workspace migrate --from old --to new -w acme --new-name acme-eu --retire --yes
+miabi --context old workspace unfreeze -w acme                   # roll a frozen source back
+```
+
+You must own the workspace on the source. `--freeze` stops the source's apps for a consistent copy
+(a failed move unfreezes it); `--retire` marks the source as moved once the import succeeds;
+`--no-data` skips the database dumps and volume archives. `--source-insecure-skip-tls-verify` and
+`--source-ca` are for the target reaching the source; the CLI itself trusts each server as its
+context says. `migrate` cancels the migration on the source unless the import completed (a completed
+import closes it already). `import` and `migrate` exit non-zero when the migration fails and warn
+when it ends `partial`.
 
 ### Secrets
 

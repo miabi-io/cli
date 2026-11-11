@@ -229,6 +229,8 @@ type PipelineRun struct {
 	Trigger    string     `json:"trigger,omitempty"`
 	Branch     string     `json:"branch,omitempty"`
 	Commit     string     `json:"commit,omitempty"`
+	Version    string     `json:"version,omitempty"`
+	ImageTag   string     `json:"image_tag,omitempty"`
 	NoCache    bool       `json:"no_cache,omitempty"`
 	Error      string     `json:"error,omitempty"`
 	StartedAt  *time.Time `json:"started_at,omitempty"`
@@ -261,6 +263,75 @@ type TriggerPipelineRequest struct {
 	Branch  string `json:"branch,omitempty"`
 	Commit  string `json:"commit,omitempty"`
 	NoCache bool   `json:"no_cache,omitempty"`
+	// Bump (patch|minor|major) or Version (exact, admins only) override this run's version.
+	Bump    string `json:"bump,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+// VersionSettings is how an image repository numbers its builds.
+type VersionSettings struct {
+	Scheme          string          `json:"scheme"`
+	Template        string          `json:"template,omitempty"`
+	Series          string          `json:"series,omitempty"`
+	Bump            string          `json:"bump,omitempty"`
+	Start           string          `json:"start,omitempty"`
+	CalverFormat    string          `json:"calver_format,omitempty"`
+	Branches        VersionBranches `json:"branches"`
+	FloatingTags    []string        `json:"floating_tags,omitempty"`
+	BumpFromCommits bool            `json:"bump_from_commits,omitempty"`
+}
+
+// VersionBranches decides which branches release and how the others are tagged.
+type VersionBranches struct {
+	Release []string          `json:"release,omitempty"`
+	Others  string            `json:"others,omitempty"`
+	Series  map[string]string `json:"series,omitempty"`
+}
+
+// VersionPolicy is the version policy covering a pipeline's image repository.
+type VersionPolicy struct {
+	ID              uint              `json:"id"`
+	UID             string            `json:"uid"`
+	Scheme          string            `json:"scheme"`
+	Template        string            `json:"template"`
+	Series          string            `json:"series,omitempty"`
+	Bump            string            `json:"bump"`
+	Start           string            `json:"start,omitempty"`
+	CalverFormat    string            `json:"calver_format,omitempty"`
+	ReleaseBranches []string          `json:"release_branches,omitempty"`
+	OtherBranches   string            `json:"other_branches"`
+	BranchSeries    map[string]string `json:"branch_series,omitempty"`
+	FloatingTags    []string          `json:"floating_tags,omitempty"`
+	BumpFromCommits bool              `json:"bump_from_commits"`
+	ManagedBy       string            `json:"managed_by,omitempty"`
+	Current         string            `json:"current,omitempty"`
+	OwnerKind       string            `json:"owner_kind,omitempty"`
+	Repository      string            `json:"repository,omitempty"`
+	Next            string            `json:"next,omitempty"`
+}
+
+// Settings reads a policy back in the shape the API accepts on update.
+func (p VersionPolicy) Settings() VersionSettings {
+	return VersionSettings{
+		Scheme: p.Scheme, Template: p.Template, Series: p.Series, Bump: p.Bump, Start: p.Start,
+		CalverFormat: p.CalverFormat,
+		Branches:     VersionBranches{Release: p.ReleaseBranches, Others: p.OtherBranches, Series: p.BranchSeries},
+		FloatingTags: p.FloatingTags, BumpFromCommits: p.BumpFromCommits,
+	}
+}
+
+// VersionAllocation is one version a policy handed to a run.
+type VersionAllocation struct {
+	Version    string    `json:"version"`
+	Tag        string    `json:"tag"`
+	Series     string    `json:"series,omitempty"`
+	Branch     string    `json:"branch,omitempty"`
+	Prerelease bool      `json:"prerelease"`
+	Status     string    `json:"status"`
+	RunNumber  int       `json:"run_number,omitempty"`
+	Digest     string    `json:"digest,omitempty"`
+	Note       string    `json:"note,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // RerunPipelineRequest is the body of POST .../pipeline-runs/{id}/rerun.

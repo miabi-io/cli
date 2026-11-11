@@ -385,11 +385,36 @@ func (e *Engine) NetworkDisconnect(ctx context.Context, name, containerID string
 	return err
 }
 
+func (e *Engine) InspectNetwork(ctx context.Context, name string) (docker.NetworkState, error) {
+	res, err := e.cli.NetworkInspect(ctx, name, client.NetworkInspectOptions{})
+	if cerrdefs.IsNotFound(err) {
+		return docker.NetworkState{}, docker.ErrNotFound
+	}
+	if err != nil {
+		return docker.NetworkState{}, err
+	}
+	return docker.NetworkState{ID: res.Network.ID, EnableIPv6: res.Network.EnableIPv6}, nil
+}
+
+func (e *Engine) RemoveNetwork(ctx context.Context, name string) error {
+	_, err := e.cli.NetworkRemove(ctx, name, client.NetworkRemoveOptions{})
+	if err != nil && cerrdefs.IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
+func (e *Engine) Rootless(ctx context.Context) (bool, error) {
+	res, err := e.cli.Info(ctx, client.InfoOptions{})
+	if err != nil {
+		return false, err
+	}
+	return docker.IsRootless(res.Info.SecurityOptions), nil
+}
+
 func (e *Engine) CreateVolume(ctx context.Context, name string, labels map[string]string, sizeBytes int64) (docker.Volume, error) {
 	labels = managedLabels(labels)
-	// Record the declared capacity as a label. A *hard* size cap needs a sized backing volume, which
-	// depends on the node's storage backend and is layered on separately; the label makes the size
-	// visible to `docker volume inspect` and to quota tracking for soft enforcement.
+
 	if sizeBytes > 0 {
 		labels[docker.LabelSizeBytes] = strconv.FormatInt(sizeBytes, 10)
 	}
@@ -498,6 +523,7 @@ func createNetworkOptions(spec docker.NetworkSpec) (client.NetworkCreateOptions,
 		Internal:   spec.Internal,
 		Attachable: spec.Attachable,
 		Labels:     managedLabels(spec.Labels),
+		EnableIPv6: spec.EnableIPv6,
 	}
 	if spec.Encrypted {
 		opts.Options = map[string]string{"encrypted": ""}
@@ -514,6 +540,16 @@ func createNetworkOptions(spec docker.NetworkSpec) (client.NetworkCreateOptions,
 			}
 		}
 		opts.IPAM = &network.IPAM{Config: []network.IPAMConfig{cfg}}
+	}
+	if spec.IPv6Subnet != "" {
+		subnet, err := netip.ParsePrefix(spec.IPv6Subnet)
+		if err != nil {
+			return opts, fmt.Errorf("IPv6 subnet %q: %w", spec.IPv6Subnet, err)
+		}
+		if opts.IPAM == nil {
+			opts.IPAM = &network.IPAM{}
+		}
+		opts.IPAM.Config = append(opts.IPAM.Config, network.IPAMConfig{Subnet: subnet})
 	}
 	return opts, nil
 }

@@ -405,7 +405,7 @@ var whoamiCmd = &cobra.Command{
 	Use:   "whoami",
 	Short: "Show the authenticated identity, scopes, and bound workspace",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		c, _, err := newClient()
+		c, eff, err := newClient()
 		if err != nil {
 			return err
 		}
@@ -424,19 +424,15 @@ var whoamiCmd = &cobra.Command{
 		if len(me.Auth.Scopes) > 0 {
 			fmt.Printf("%s %s\n", ui.Dim("Scopes:"), strings.Join(me.Auth.Scopes, ", "))
 		}
-		// Local context (name + workspace + bound app) from the config file.
-		if f, ferr := config.Load(); ferr == nil {
-			if f.Current != "" {
-				fmt.Printf("%s %s\n", ui.Dim("Context:"), f.Current)
-			}
-			if cur := f.CurrentContext(); cur != nil {
-				if cur.Workspace != nil {
-					fmt.Printf("%s    %s\n", ui.Dim("Space:"), cur.Workspace.Name)
-				}
-				if cur.App != nil {
-					fmt.Printf("%s      %s\n", ui.Dim("App:"), cur.App.Name)
-				}
-			}
+		fmt.Printf("%s  %s\n", ui.Dim("Server:"), eff.URL)
+		if eff.Context != "" {
+			fmt.Printf("%s %s\n", ui.Dim("Context:"), eff.Context)
+		}
+		if eff.Workspace != nil {
+			fmt.Printf("%s    %s\n", ui.Dim("Space:"), eff.Workspace.Name)
+		}
+		if eff.App != nil {
+			fmt.Printf("%s      %s\n", ui.Dim("App:"), eff.App.Name)
 		}
 		return nil
 	},

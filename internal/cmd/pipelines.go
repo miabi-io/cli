@@ -33,6 +33,8 @@ var (
 	pipelineRunBranch    string
 	pipelineRunCommit    string
 	pipelineRunNoCache   bool
+	pipelineRunBump      string
+	pipelineRunVersion   string
 	pipelineRerunNoCache bool
 )
 
@@ -41,6 +43,9 @@ func init() {
 	rf.StringVar(&pipelineRunBranch, "branch", "", "branch to build (default: the app's tracked ref)")
 	rf.StringVar(&pipelineRunCommit, "commit", "", "commit to build (default: the branch head)")
 	rf.BoolVar(&pipelineRunNoCache, "no-cache", false, "rebuild every layer, ignoring the build cache")
+	rf.StringVar(&pipelineRunBump, "bump", "", "raise this run's version by patch, minor or major instead of the policy default")
+	rf.StringVar(&pipelineRunVersion, "version", "", "build this exact version, e.g. 2.0.0 (admins only)")
+	pipelineRunCmd.MarkFlagsMutuallyExclusive("bump", "version")
 
 	pipelineRerunCmd.Flags().BoolVar(&pipelineRerunNoCache, "no-cache", false, "rebuild every layer, ignoring the build cache")
 
@@ -58,6 +63,7 @@ var pipelineCmd = &cobra.Command{
 	Example: "  miabi pipeline ls\n" +
 		"  miabi pipeline run web --branch main\n" +
 		"  miabi pipeline run web --no-cache\n" +
+		"  miabi pipeline run web --bump minor\n" +
 		"  miabi pipeline rerun 42 --no-cache",
 }
 
@@ -96,7 +102,7 @@ var pipelineLsCmd = &cobra.Command{
 }
 
 var pipelineRunCmd = &cobra.Command{
-	Use:   "run <pipeline> [--branch <ref>] [--no-cache]",
+	Use:   "run <pipeline> [--branch <ref>] [--no-cache] [--bump <part> | --version <x.y.z>]",
 	Short: "Start a pipeline run",
 	Long: "Triggers a manual run of the pipeline (by name, uid, or numeric id).\n" +
 		"--no-cache rebuilds every layer for this run only, which is the pipeline-side\n" +
@@ -114,6 +120,7 @@ var pipelineRunCmd = &cobra.Command{
 		}
 		run, err := c.TriggerPipeline(ctx, ws, args[0], api.TriggerPipelineRequest{
 			Branch: pipelineRunBranch, Commit: pipelineRunCommit, NoCache: pipelineRunNoCache,
+			Bump: pipelineRunBump, Version: pipelineRunVersion,
 		})
 		if err != nil {
 			return err
@@ -157,6 +164,9 @@ func reportRun(run *api.PipelineRun, ref string) error {
 		return emit(run)
 	}
 	ui.Success("Run #%d of %s queued (%s)", run.Number, ui.Bold(ref), ui.Status(run.Status))
+	if run.ImageTag != "" {
+		ui.Info("Building %s — tagged once the run succeeds.", ui.Bold(run.ImageTag))
+	}
 	if run.NoCache {
 		ui.Info("Building without cache — expect a slower run.")
 	}
