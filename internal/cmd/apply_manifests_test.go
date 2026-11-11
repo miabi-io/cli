@@ -20,6 +20,8 @@
 package cmd
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,5 +85,44 @@ func TestReadManifestsReportsAMissingPath(t *testing.T) {
 	_, err := readManifests([]string{filepath.Join(t.TempDir(), "missing.yaml")})
 	if err == nil || !strings.Contains(err.Error(), "missing.yaml") {
 		t.Fatalf("err = %v, want it to name the path", err)
+	}
+}
+
+func TestReadManifestsFetchesAURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			t.Error("the manifest fetch sent credentials")
+		}
+		if r.URL.Path == "/missing.yaml" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte("kind: Route\n"))
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "app.yaml"), "kind: Application\n")
+
+	got, err := readManifests([]string{dir, srv.URL + "/route.yaml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "kind: Application\n---\nkind: Route" {
+		t.Fatalf("bundle = %q", got)
+	}
+
+	_, err = readManifests([]string{srv.URL + "/missing.yaml"})
+	if err == nil || !strings.Contains(err.Error(), "404") {
+		t.Fatalf("err = %v, want the HTTP status", err)
+	}
+}
+
+func TestReadManifestsRefusesAnOversizedURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(make([]byte, maxManifestBytes+1))
+	}))
+	defer srv.Close()
+	if _, err := readManifests([]string{srv.URL}); err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Fatalf("err = %v, want a size error", err)
 	}
 }
