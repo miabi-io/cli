@@ -40,7 +40,7 @@ func newBackupCmd() *cobra.Command {
 			"This is the database only — not volumes, certificates or the manifest. The dump's\n" +
 			"secrets decrypt only with the encryption key in the manifest, so back that file up\n" +
 			"too. For off-host disaster recovery use Platform backup in the admin panel.",
-		Example:       "  sudo miabi stack backup\n  sudo miabi stack backup --dir /mnt/backups",
+		Example:       "  sudo miabi system backup\n  sudo miabi system backup --dir /mnt/backups",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -108,9 +108,9 @@ func newRestoreCmd() *cobra.Command {
 		Long: "Stops the control plane, loads the dump into a scratch database, swaps it in only once\n" +
 			"it loaded cleanly, and starts the control plane again. The current database is dumped\n" +
 			"first, so a restore can itself be undone.\n\n" +
-			"The dump is a path, or a name from `miabi stack backups`. A dump taken by a newer Miabi\n" +
+			"The dump is a path, or a name from `miabi system backups`. A dump taken by a newer Miabi\n" +
 			"than the one running is refused: the control plane only migrates forward.",
-		Example:       "  sudo miabi stack backups\n  sudo miabi stack restore miabi-1.8.0-20261017T120000Z.dump",
+		Example:       "  sudo miabi system backups\n  sudo miabi system restore miabi-1.8.0-20261017T120000Z.dump",
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

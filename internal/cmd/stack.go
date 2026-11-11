@@ -38,40 +38,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() {
-	stackCmd.AddCommand(
-		newUpgradeCmd("upgrade"),
-		newApplyCmd(),
-		newRestartCmd(),
-		newStatusCmd(),
-		newUninstallCmd(),
-		newMigrateConfigCmd(),
-		newStackEnvCmd(),
-		newBackupCmd(),
-		newBackupsCmd(),
-		newRestoreCmd(),
-	)
-
-	setupCmd := newSetupCmd("setup")
-	setupCmd.AddCommand(newStackEnvCmd())
-	rootCmd.AddCommand(stackCmd, setupCmd, newUpgradeCmd("upgrade"))
-}
-
-var stackCmd = &cobra.Command{
-	Use:   "stack",
-	Short: "Manage the Miabi stack installed on this host",
-	Long: "These commands drive the Docker stack on the machine they run on — not a panel over\n" +
-		"HTTP. They read and write the manifest at " + stack.DefaultConfigPath + ", need root,\n" +
-		"and require a reachable Docker daemon.",
-	Example: "  sudo miabi setup --domain miabi.example.com\n" +
-		"  sudo miabi upgrade\n" +
-		"  sudo miabi stack status\n" +
-		"  sudo miabi stack restart miabi-gateway",
-
-	Args: cobra.NoArgs,
-	RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
-}
-
 // stackCtx cancels on Ctrl-C, so a half-finished converge can still run its cleanup rather than
 // leaving a container mid-pull.
 func stackCtx() (context.Context, context.CancelFunc) {
@@ -248,9 +214,9 @@ func runSetup(_ *cobra.Command, o *setupOpts) error {
 		return err
 	}
 	_ = res
-	fmt.Printf("\n  Manage it:\n\n    sudo miabi stack status\n\n" +
+	fmt.Printf("\n  Manage it:\n\n    sudo miabi system status\n\n" +
 		"    …and likewise `miabi upgrade` (rolls the stack forward, rolling back if it fails)\n" +
-		"    or `miabi stack uninstall` (keeps your data; add --volumes to destroy it).\n")
+		"    or `miabi system uninstall` (keeps your data; add --volumes to destroy it).\n")
 	return nil
 }
 
@@ -273,7 +239,7 @@ func newUpgradeCmd(use string) *cobra.Command {
 			"correct on a private registry and on components that are not miabi/miabi. --image replaces\n" +
 			"the reference outright. A leading \"v\" is optional: v1.8.0 and 1.8.0 both work.\n\n" +
 			"A failed rollout rolls back the image, not a schema the new version already migrated.\n" +
-			"Take a dump first with `miabi stack backup`.",
+			"Take a dump first with `miabi system backup`.",
 		Example: "  sudo miabi upgrade\n" +
 			"  sudo miabi upgrade --version v1.8.0\n" +
 			"  sudo miabi upgrade miabi-gateway --version 0.14.0\n" +
@@ -322,8 +288,8 @@ func newApplyCmd() *cobra.Command {
 		Use:   "apply",
 		Short: "Bring the running stack in line with the manifest",
 		Long: "Recreates only the components whose spec changed since they were created — the step\n" +
-			"after one or more `miabi stack env set` edits. Nothing changed means nothing restarts.",
-		Example:       "  sudo miabi stack env set MIABI_SMTP_HOST=smtp.example.com MIABI_SMTP_PORT=587\n  sudo miabi stack apply",
+			"after one or more `miabi system env set` edits. Nothing changed means nothing restarts.",
+		Example:       "  sudo miabi system env set MIABI_SMTP_HOST=smtp.example.com MIABI_SMTP_PORT=587\n  sudo miabi system apply",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -355,7 +321,7 @@ func newRestartCmd() *cobra.Command {
 		Use:           "restart [component]",
 		Short:         "Restart the stack, or one component (miabi, miabi-gateway, …)",
 		Long:          "Restarts in place without recreating containers, so they re-read their on-disk config.\nA changed image or spec needs `miabi upgrade` instead.",
-		Example:       "  sudo miabi stack restart\n  sudo miabi stack restart miabi-gateway",
+		Example:       "  sudo miabi system restart\n  sudo miabi system restart miabi-gateway",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,

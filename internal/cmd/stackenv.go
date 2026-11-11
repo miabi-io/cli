@@ -52,15 +52,15 @@ func newStackEnvCmd() *cobra.Command {
 		Use:   "env",
 		Short: "Read and change the installed stack's environment variables",
 		Long: "Edits the manifest at " + stack.DefaultConfigPath + " without touching the running\n" +
-			"stack, so several edits cost one recreate: `miabi stack apply` converges them, and only\n" +
+			"stack, so several edits cost one recreate: `miabi system apply` converges them, and only\n" +
 			"the components whose environment changed are recreated. --apply does both in one step.\n\n" +
 			"Settings the manifest models with their own field — the registry, the networks, the\n" +
 			"backup destination — are refused here and the error names where they live.",
-		Example: "  sudo miabi stack env ls\n" +
-			"  sudo miabi stack env set MIABI_SMTP_HOST=smtp.example.com MIABI_SMTP_PORT=587\n" +
-			"  sudo miabi stack env set GOMA_LOG_LEVEL=debug --gateway\n" +
-			"  sudo miabi stack env unset MIABI_SMTP_HOST\n" +
-			"  sudo miabi stack apply",
+		Example: "  sudo miabi system env ls\n" +
+			"  sudo miabi system env set MIABI_SMTP_HOST=smtp.example.com MIABI_SMTP_PORT=587\n" +
+			"  sudo miabi system env set GOMA_LOG_LEVEL=debug --gateway\n" +
+			"  sudo miabi system env unset MIABI_SMTP_HOST\n" +
+			"  sudo miabi system apply",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
@@ -156,7 +156,7 @@ func newStackEnvSetCmd(o *stackEnvOpts) *cobra.Command {
 		Use:   "set KEY=VALUE [KEY=VALUE…]",
 		Short: "Set variables in the manifest",
 		Long: "Writes the values into the manifest and shows what changes. The running stack keeps the\n" +
-			"old values until `miabi stack apply`; --apply converges right away.",
+			"old values until `miabi system apply`; --apply converges right away.",
 		Args:          cobra.MinimumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -176,7 +176,7 @@ func newStackEnvUnsetCmd(o *stackEnvOpts) *cobra.Command {
 	c := &cobra.Command{
 		Use:   "unset KEY [KEY…]",
 		Short: "Remove variables from the manifest",
-		Long: "Removes the values from the manifest; `miabi stack apply` (or --apply) makes it live.\n" +
+		Long: "Removes the values from the manifest; `miabi system apply` (or --apply) makes it live.\n" +
 			"A variable Miabi seeds (TZ, MIABI_LOG_LEVEL) comes back at its default rather than\n" +
 			"disappearing, and the output says so.",
 		Args:          cobra.MinimumNArgs(1),
