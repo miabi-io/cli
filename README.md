@@ -55,7 +55,8 @@ curl -fsSL "https://github.com/miabi-io/cli/releases/download/v${VERSION}/miabi_
 miabi --version
 ```
 
-(Swap `linux_amd64` for `linux_arm64`, `darwin_amd64`, `darwin_arm64`, or use the `.zip` for Windows.)
+(Swap `linux_amd64` for `linux_arm64`, `linux_armv6` (32-bit Raspberry Pi OS), `darwin_amd64`,
+`darwin_arm64`, or use the `.zip` for Windows.)
 
 **Docker** — no install at all; handy in CI. Published to Docker Hub and mirrored to GHCR
 (`ghcr.io/miabi-io/cli`):

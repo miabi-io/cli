@@ -14,14 +14,21 @@ builds:
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
+    goarch: [amd64, arm64, arm]
+    # v6 also runs on v7 hardware, so one build covers 32-bit Raspberry Pi OS.
+    goarm: ["6"]
+    ignore:
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
     ldflags:
       - -s -w
       - -X github.com/miabi-io/cli/internal/cmd.version={{ .Version }}
 
 archives:
   - id: miabi
-    name_template: "miabi_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "miabi_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     format_overrides:
       - goos: windows
         formats: [zip]
