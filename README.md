@@ -30,6 +30,15 @@ brew install miabi
 ```
 </details>
 
+**Windows** (PowerShell, no admin rights needed):
+
+```powershell
+irm https://raw.githubusercontent.com/miabi-io/cli/main/install.ps1 | iex
+```
+
+It installs `miabi.exe` to `%LOCALAPPDATA%\Programs\miabi` and adds that folder to your user
+`PATH`. Set `MIABI_CLI_VERSION` to pin a version, or `MIABI_INSTALL_DIR` to install elsewhere.
+
 **Go:**
 
 ```bash
