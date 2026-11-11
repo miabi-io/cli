@@ -74,7 +74,8 @@ kind: Domain
 metadata:
   name: example.com
 spec:
-  tls: acme
+  tls:
+    mode: acme
 ---
 apiVersion: miabi.io/v1
 kind: Route
