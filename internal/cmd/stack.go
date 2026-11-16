@@ -27,6 +27,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -92,9 +93,7 @@ const DefaultPlatformImage = platformRepo + ":latest"
 
 // The platform version is looked up, not baked in, because the CLI releases on its own cadence.
 func defaultControlPlaneImage() string {
-	ctx, cancel := context.WithTimeout(context.Background(), releaseLookupTimeout)
-	defer cancel()
-	r, err := release.LatestRelease(ctx, "miabi-cli/"+version)
+	r, err := latestRelease()
 	if err != nil {
 		ui.Warn("could not determine the latest Miabi version (%v) — falling back to %s.\n"+
 			"    Pin one with --version 1.8.0 to keep rollback and drift detection working.", err, DefaultPlatformImage)
@@ -105,6 +104,22 @@ func defaultControlPlaneImage() string {
 	}
 	return platformRepo + ":" + r.Version
 }
+
+// Empty on a failed lookup, so the upgrade falls back to the gateway this CLI bundles.
+func defaultGatewayVersion() string {
+	r, err := latestRelease()
+	if err != nil {
+		return ""
+	}
+	return r.Gateway
+}
+
+// One lookup serves both the control-plane and gateway defaults of a single command.
+var latestRelease = sync.OnceValues(func() (release.Release, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), releaseLookupTimeout)
+	defer cancel()
+	return release.LatestRelease(ctx, "miabi-cli/"+version)
+})
 
 // releaseLookupTimeout is short because it blocks an install the operator is waiting on.
 const releaseLookupTimeout = 20 * time.Second
@@ -203,8 +218,10 @@ func newUpgradeCmd(use string) *cobra.Command {
 	c := &cobra.Command{
 		Use:   use + " [component]",
 		Short: "Move the installed stack to a newer version (all components, or one by name)",
-		Long: "With no argument the control plane moves to the latest published Miabi release and the\n" +
-			"rest of the stack re-converges. The version is looked up rather than baked in: the CLI\n" +
+		Long: "With no argument the control plane moves to the latest published Miabi release, the\n" +
+			"official gateway image to the Goma version shipped with it (only ever forward; a custom\n" +
+			"gateway image is left for you to roll out by name), and\n" +
+			"the rest of the stack re-converges. The version is looked up rather than baked in: the CLI\n" +
 			"releases on its own cadence, so an older CLI still upgrades to today's Miabi.\n" +
 			"Naming a component rolls out just that one, to whatever the manifest pins\n" +
 			"unless --version/--image says otherwise — bumping Postgres is a database restart you have\n" +
@@ -249,7 +266,8 @@ func runUpgrade(args []string, image, versionFlag, file string, yes bool) error 
 	}
 	return stackcmd.Upgrade(ctx, sess.Svc, sess.Manifest, stackcmd.UpgradeOptions{
 		Component: component, Image: image, Version: versionFlag, Yes: yes,
-		DefaultImage: defaultControlPlaneImage,
+		DefaultImage:   defaultControlPlaneImage,
+		GatewayVersion: defaultGatewayVersion,
 	}, cliUI{})
 }
 

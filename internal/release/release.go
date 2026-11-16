@@ -54,6 +54,8 @@ type Release struct {
 	Version    string
 	Reason     string
 	ReleaseURL string
+	// Gateway is the Goma version shipped with this release; empty when the source does not say.
+	Gateway string
 }
 
 // Latest returns the newest stable platform version without a leading "v".
@@ -92,6 +94,9 @@ type versionsManifest struct {
 		ReleaseURL   string `json:"release_url"`
 		ChangelogURL string `json:"changelog_url"`
 		Reason       string `json:"reason"`
+		Components   struct {
+			Gateway string `json:"gateway"`
+		} `json:"components"`
 	} `json:"stable"`
 }
 
@@ -118,7 +123,7 @@ func fromVersions(ctx context.Context, url, userAgent string) (Release, error) {
 	if m.Stable.ChangelogURL != "" {
 		link = m.Stable.ChangelogURL
 	}
-	return Release{Version: v, Reason: m.Stable.Reason, ReleaseURL: link}, nil
+	return Release{Version: v, Reason: m.Stable.Reason, ReleaseURL: link, Gateway: Normalize(m.Stable.Components.Gateway)}, nil
 }
 
 type ghRelease struct {

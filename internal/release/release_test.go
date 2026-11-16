@@ -37,6 +37,7 @@ func TestLatestReadsVersionsService(t *testing.T) {
 		"stable": map[string]any{
 			"version": "1.10.19", "reason": "security",
 			"release_url": "https://github.example/v1.10.19", "changelog_url": "https://docs.example/1.10.19",
+			"components": map[string]any{"gateway": "v1.2.1"},
 		},
 		"prerelease": map[string]any{"version": "1.11.0-beta.1"},
 	})
@@ -47,7 +48,7 @@ func TestLatestReadsVersionsService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Version != "1.10.19" || r.Reason != ReasonSecurity || r.ReleaseURL != "https://docs.example/1.10.19" {
+	if r.Version != "1.10.19" || r.Reason != ReasonSecurity || r.ReleaseURL != "https://docs.example/1.10.19" || r.Gateway != "1.2.1" {
 		t.Fatalf("release = %+v", r)
 	}
 	if *ghHits != 0 {
