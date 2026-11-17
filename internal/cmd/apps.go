@@ -56,7 +56,7 @@ func init() {
 	f.UintVar(&appCreateNode, "node", 0, "node/server id to place on (0 = local)")
 	f.IntVar(&appCreateGPUs, "gpus", 0, "whole GPU devices to attach (needs a plan that allows GPUs)")
 	f.StringVar(&appCreateGPUKind, "gpu-kind", "", "narrow the GPUs to a vendor or model, e.g. nvidia or A100")
-	f.StringSliceVar(&appCreateGPUCaps, "gpu-capabilities", nil, "NVIDIA driver capabilities: compute,utility,video,graphics,display,compat32")
+	f.StringSliceVar(&appCreateGPUCaps, "gpu-capabilities", nil, "extra NVIDIA driver capabilities: video,graphics,display,compat32 (compute and utility are always on)")
 	f.BoolVar(&appCreateUse, "use", false, "bind the new app as the current app (like `miabi use`)")
 
 	appRmCmd.Flags().BoolVarP(&appRmYes, "yes", "y", false, "skip the confirmation prompt")

@@ -138,7 +138,7 @@ miabi use web                      # bind a default app (per workspace)
 
 miabi apps ls                      # list applications (→ marks the bound app)
 miabi apps create web (--image miabi/guestbook [--tag 1.0] | --git-repo <url> [--git-ref main]) [--port 3000] [--use]
-miabi apps create llm --image ollama/ollama --port 11434 --gpus 1 [--gpu-kind nvidia] [--gpu-capabilities compute,utility]
+miabi apps create llm --image ollama/ollama --port 11434 --gpus 1 [--gpu-kind nvidia] [--gpu-capabilities video]
 miabi apps deploy      [web] --tag $SHA [--strategy rolling] [--no-cache] [--wait] [--timeout 10m]
 miabi apps start|stop|restart [web]               # control the app's container
 miabi apps deployments [web]                      # deploy history — the NUMBER column
