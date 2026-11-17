@@ -38,6 +38,9 @@ var (
 	appCreateBuildMethod string
 	appCreatePort        int
 	appCreateNode        uint
+	appCreateGPUs        int
+	appCreateGPUKind     string
+	appCreateGPUCaps     []string
 	appCreateUse         bool
 	appRmYes             bool
 )
@@ -51,6 +54,9 @@ func init() {
 	f.StringVar(&appCreateBuildMethod, "build-method", "", "git build method: auto | dockerfile | buildpack")
 	f.IntVar(&appCreatePort, "port", 0, "primary container port")
 	f.UintVar(&appCreateNode, "node", 0, "node/server id to place on (0 = local)")
+	f.IntVar(&appCreateGPUs, "gpus", 0, "whole GPU devices to attach (needs a plan that allows GPUs)")
+	f.StringVar(&appCreateGPUKind, "gpu-kind", "", "narrow the GPUs to a vendor or model, e.g. nvidia or A100")
+	f.StringSliceVar(&appCreateGPUCaps, "gpu-capabilities", nil, "NVIDIA driver capabilities: compute,utility,video,graphics,display,compat32")
 	f.BoolVar(&appCreateUse, "use", false, "bind the new app as the current app (like `miabi use`)")
 
 	appRmCmd.Flags().BoolVarP(&appRmYes, "yes", "y", false, "skip the confirmation prompt")
@@ -114,7 +120,8 @@ var appCreateCmd = &cobra.Command{
 		"--git-repo for a git-source app. The app is created but not deployed — run\n" +
 		"`miabi deploy <app>` (or pass --use to bind it first).",
 	Example: "  miabi apps create web --image miabi/guestbook --tag 1.0 --port 3000\n" +
-		"  miabi apps create api --git-repo https://github.com/acme/api --git-ref main --use",
+		"  miabi apps create api --git-repo https://github.com/acme/api --git-ref main --use\n" +
+		"  miabi apps create llm --image ollama/ollama --port 11434 --gpus 1 --gpu-kind nvidia",
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		source := ""
@@ -129,6 +136,12 @@ var appCreateCmd = &cobra.Command{
 		if appCreateImage != "" && appCreateGitRepo != "" {
 			return fmt.Errorf("--image and --git-repo are mutually exclusive")
 		}
+		if appCreateGPUs < 0 {
+			return fmt.Errorf("--gpus cannot be negative")
+		}
+		if appCreateGPUs == 0 && (appCreateGPUKind != "" || len(appCreateGPUCaps) > 0) {
+			return fmt.Errorf("--gpu-kind and --gpu-capabilities need --gpus")
+		}
 
 		ctx := context.Background()
 		c, eff, err := newClient()
@@ -140,16 +153,19 @@ var appCreateCmd = &cobra.Command{
 			return err
 		}
 		app, err := c.CreateApp(ctx, ws, api.CreateAppRequest{
-			DisplayName: args[0],
-			Name:        args[0],
-			SourceType:  source,
-			Image:       appCreateImage,
-			Tag:         appCreateTag,
-			GitRepo:     appCreateGitRepo,
-			GitRef:      appCreateGitRef,
-			BuildMethod: appCreateBuildMethod,
-			Port:        appCreatePort,
-			ServerID:    appCreateNode,
+			DisplayName:     args[0],
+			Name:            args[0],
+			SourceType:      source,
+			Image:           appCreateImage,
+			Tag:             appCreateTag,
+			GitRepo:         appCreateGitRepo,
+			GitRef:          appCreateGitRef,
+			BuildMethod:     appCreateBuildMethod,
+			Port:            appCreatePort,
+			ServerID:        appCreateNode,
+			GPUCount:        appCreateGPUs,
+			GPUKind:         appCreateGPUKind,
+			GPUCapabilities: appCreateGPUCaps,
 		})
 		if err != nil {
 			return err
@@ -170,6 +186,9 @@ var appCreateCmd = &cobra.Command{
 			return emit(app)
 		}
 		ui.Success("Created %s %s", ui.Bold(app.Name), ui.Dim(fmt.Sprintf("(%s)", source)))
+		for _, w := range app.Warnings {
+			ui.Warn("%s", w)
+		}
 		if appCreateUse {
 			ui.Info("Now using %s", app.Name)
 		}

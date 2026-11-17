@@ -64,6 +64,8 @@ type App struct {
 	Status           string    `json:"status"`
 	CurrentReleaseID *uint     `json:"current_release_id"`
 	CreatedAt        time.Time `json:"created_at"`
+	// Warnings are advisory notes on a create that still succeeded, such as too few GPUs on the node.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // CreateAppRequest: the server derives Name from DisplayName when Name is empty.
@@ -79,6 +81,10 @@ type CreateAppRequest struct {
 	BuildMethod string   `json:"build_method,omitempty"`
 	Port        int      `json:"port,omitempty"`
 	Command     []string `json:"command,omitempty"`
+	// GPU fields are refused by the server unless the workspace's plan allows GPUs.
+	GPUCount        int      `json:"gpu_count,omitempty"`
+	GPUKind         string   `json:"gpu_kind,omitempty"`
+	GPUCapabilities []string `json:"gpu_capabilities,omitempty"`
 }
 
 // SetAppSourceRequest is a whole-source replacement; the server clears the other source's fields.
