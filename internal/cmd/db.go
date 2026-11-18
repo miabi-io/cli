@@ -33,7 +33,8 @@ func init() {
 	dbCreateCmd.Flags().StringVar(&dbEngine, "engine", "", "engine: postgres | mysql | mariadb | redis | mongodb | libsql (required)")
 	dbCreateCmd.Flags().StringVar(&dbVersion, "version", "", "engine version (default: the engine's default)")
 	dbCreateCmd.Flags().IntVar(&dbSizeMB, "size-mb", 0, "data-volume capacity in MB (0 = unspecified)")
-	dbCreateCmd.Flags().UintVar(&dbNode, "node", 0, "node/server id to place on (0 = local)")
+	dbCreateCmd.Flags().StringVar(&dbNode, "node", "", nodeFlagHelp+"; fixed once created")
+	dbCreateCmd.Flags().StringVar(&dbLocation, "location", "", locationFlagHelp)
 	_ = dbCreateCmd.MarkFlagRequired("engine")
 
 	dbLogsCmd.Flags().BoolVarP(&dbLogsFollow, "follow", "f", false, "stream new logs (default: print the current logs and exit)")
@@ -61,7 +62,8 @@ var (
 	dbEngine          string
 	dbVersion         string
 	dbSizeMB          int
-	dbNode            uint
+	dbNode            string
+	dbLocation        string
 	dbLogsFollow      bool
 	dbLogsTail        int
 	dbUpgradeTo       string
@@ -173,8 +175,9 @@ var dbCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		serverID, node := nodeTarget(dbNode)
 		d, err := c.CreateDatabase(ctx, ws, api.CreateDatabaseRequest{
-			Name: args[0], Engine: dbEngine, Version: dbVersion, ServerID: dbNode, SizeMB: dbSizeMB,
+			Name: args[0], Engine: dbEngine, Version: dbVersion, ServerID: serverID, Node: node, Location: dbLocation, SizeMB: dbSizeMB,
 		})
 		if err != nil {
 			return err

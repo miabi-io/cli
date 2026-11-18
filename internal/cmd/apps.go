@@ -37,7 +37,8 @@ var (
 	appCreateGitRef      string
 	appCreateBuildMethod string
 	appCreatePort        int
-	appCreateNode        uint
+	appCreateNode        string
+	appCreateLocation    string
 	appCreateUse         bool
 	appRmYes             bool
 )
@@ -50,7 +51,8 @@ func init() {
 	f.StringVar(&appCreateGitRef, "git-ref", "", "git branch/ref (git source)")
 	f.StringVar(&appCreateBuildMethod, "build-method", "", "git build method: auto | dockerfile | buildpack")
 	f.IntVar(&appCreatePort, "port", 0, "primary container port")
-	f.UintVar(&appCreateNode, "node", 0, "node/server id to place on (0 = local)")
+	f.StringVar(&appCreateNode, "node", "", nodeFlagHelp)
+	f.StringVar(&appCreateLocation, "location", "", locationFlagHelp)
 	f.BoolVar(&appCreateUse, "use", false, "bind the new app as the current app (like `miabi use`)")
 
 	appRmCmd.Flags().BoolVarP(&appRmYes, "yes", "y", false, "skip the confirmation prompt")
@@ -139,7 +141,11 @@ var appCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		serverID, node := nodeTarget(appCreateNode)
 		app, err := c.CreateApp(ctx, ws, api.CreateAppRequest{
+			ServerID:    serverID,
+			Node:        node,
+			Location:    appCreateLocation,
 			DisplayName: args[0],
 			Name:        args[0],
 			SourceType:  source,
@@ -149,7 +155,6 @@ var appCreateCmd = &cobra.Command{
 			GitRef:      appCreateGitRef,
 			BuildMethod: appCreateBuildMethod,
 			Port:        appCreatePort,
-			ServerID:    appCreateNode,
 		})
 		if err != nil {
 			return err

@@ -71,6 +71,8 @@ type CreateAppRequest struct {
 	DisplayName string   `json:"display_name"`
 	Name        string   `json:"name,omitempty"`
 	ServerID    uint     `json:"server_id,omitempty"`
+	Node        string   `json:"node,omitempty"`
+	Location    string   `json:"location,omitempty"`
 	SourceType  string   `json:"source_type,omitempty"`
 	Image       string   `json:"image,omitempty"`
 	Tag         string   `json:"tag,omitempty"`
@@ -395,6 +397,8 @@ type CreateDatabaseRequest struct {
 	Engine   string `json:"engine"`
 	Version  string `json:"version,omitempty"`
 	ServerID uint   `json:"server_id,omitempty"`
+	Node     string `json:"node,omitempty"`
+	Location string `json:"location,omitempty"`
 	SizeMB   int    `json:"size_mb,omitempty"`
 }
 
@@ -457,6 +461,8 @@ type VolumeDetail struct {
 type CreateVolumeRequest struct {
 	Name     string `json:"name"`
 	ServerID uint   `json:"server_id,omitempty"`
+	Node     string `json:"node,omitempty"`
+	Location string `json:"location,omitempty"`
 	SizeMB   int    `json:"size_mb,omitempty"`
 	// DriverOpts are the backend's mount options (NFS/CIFS: device, o; host: path), encrypted and never returned.
 	Driver     string            `json:"driver,omitempty"`
