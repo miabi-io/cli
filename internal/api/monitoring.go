@@ -88,7 +88,7 @@ func (c *Client) TrafficSummary(ctx context.Context, ws string, appID uint, rng 
 	return &t, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/analytics/summary?%s", ws, q.Encode()), &t)
 }
 
-// BackupRunTimeout is long because the server runs a manual backup inline in the request.
+// BackupRunTimeout covers older servers, which run a manual backup inline in the request.
 const BackupRunTimeout = 30 * time.Minute
 
 func (c *Client) Backups(ctx context.Context, ws string, id, dbID uint) ([]Backup, error) {
@@ -96,7 +96,7 @@ func (c *Client) Backups(ctx context.Context, ws string, id, dbID uint) ([]Backu
 	return bs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/databases/%d/databases/%d/backups", ws, id, dbID), &bs)
 }
 
-// RunBackup returns the finished record; its status says whether the backup succeeded.
+// RunBackup returns the record as the server left it: running on current servers, which finish in the background, finished on older ones.
 func (c *Client) RunBackup(ctx context.Context, ws string, id, dbID uint, comment string) (*Backup, error) {
 	var b Backup
 	body := map[string]string{"comment": comment}

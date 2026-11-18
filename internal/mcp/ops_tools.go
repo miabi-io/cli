@@ -171,7 +171,7 @@ func (s *Server) registerOpsTools() {
 	s.register(tool{
 		def: toolDef{
 			Name:        "run_backup",
-			Description: "Back up a database now, to the workspace's configured destination. Blocks until the backup finishes and returns it; check its status.",
+			Description: "Back up a database now, to the workspace's configured destination. Returns the backup at once with status running; it continues on the server, and the requester gets an inbox notification when it finishes. Call list_backups to see its outcome. A second backup of the same database is refused while one runs.",
 			InputSchema: object(map[string]any{
 				"workspace": wsProp,
 				"database":  databaseProp,
