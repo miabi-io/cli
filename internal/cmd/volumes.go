@@ -32,7 +32,8 @@ import (
 
 func init() {
 	volCreateCmd.Flags().IntVar(&volSizeMB, "size-mb", 0, "declared capacity in MB (0 = unbounded)")
-	volCreateCmd.Flags().UintVar(&volNode, "node", 0, "node/server id to place the volume on (0 = local)")
+	volCreateCmd.Flags().StringVar(&volNode, "node", "", nodeFlagHelp+"; fixed once created")
+	volCreateCmd.Flags().StringVar(&volLocation, "location", "", locationFlagHelp)
 	volCreateCmd.Flags().StringVar(&volDriver, "driver", "", "storage driver: local (default) | nfs | cifs | host")
 	volCreateCmd.Flags().StringArrayVar(&volDriverOpt, "driver-opt", nil, "driver option as key=value (repeatable)")
 	volCreateCmd.Flags().StringArrayVar(&volDriverOptFile, "driver-opt-file", nil, "driver option as key=path, value read from the file (\"-\" reads stdin) — keeps a share password out of your shell history")
@@ -58,7 +59,8 @@ func init() {
 
 var (
 	volSizeMB        int
-	volNode          uint
+	volNode          string
+	volLocation      string
 	volDriver        string
 	volDriverOpt     []string
 	volDriverOptFile []string
@@ -136,17 +138,19 @@ var volLsCmd = &cobra.Command{
 }
 
 var volCreateCmd = &cobra.Command{
-	Use:   "create <name> [--size-mb N] [--node <id>] [--driver <driver> --driver-opt k=v…]",
+	Use:   "create <name> [--size-mb N] [--location <name>] [--node <name>] [--driver <driver> --driver-opt k=v…]",
 	Short: "Create a volume",
 	Long: "Creates a managed volume in the workspace. The default driver is `local`: a\n" +
 		"node-local volume (rwo) that only one node can mount, so an app backed by one\n" +
-		"cannot be replicated across nodes.\n\n" +
+		"cannot be replicated across nodes. --node picks which node it lives on; it\n" +
+		"cannot move later.\n\n" +
 		"`nfs` and `cifs` create shared (rwx) storage every replica can mount; both need\n" +
 		"--driver-opt device=… and usually --driver-opt o=… for the mount options.\n" +
 		"`host` binds an operator-managed path (--driver-opt path=/mnt/…) and is limited\n" +
 		"to privileged workspaces. Driver options are encrypted server-side and never\n" +
 		"read back — use --driver-opt-file for anything holding a password.",
 	Example: "  miabi volumes create web-data --size-mb 5120\n" +
+		"  miabi volumes create pgdata --location eu-west --node node-2\n" +
 		"  miabi volumes create shared --driver nfs --driver-opt device=:/export --driver-opt o=addr=10.0.0.5,rw\n" +
 		"  miabi volumes create shared --driver cifs --driver-opt device=//nas/share --driver-opt-file o=mount-opts.txt",
 	Args: cobra.ExactArgs(1),
@@ -164,8 +168,9 @@ var volCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		serverID, node := nodeTarget(volNode)
 		v, err := c.CreateVolume(ctx, ws, api.CreateVolumeRequest{
-			Name: args[0], ServerID: volNode, SizeMB: volSizeMB, Driver: volDriver, DriverOpts: opts,
+			Name: args[0], ServerID: serverID, Node: node, Location: volLocation, SizeMB: volSizeMB, Driver: volDriver, DriverOpts: opts,
 		})
 		if err != nil {
 			return err

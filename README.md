@@ -137,7 +137,7 @@ miabi workspace migrate --from old --to new -w acme   # move a workspace to anot
 miabi use web                      # bind a default app (per workspace)
 
 miabi apps ls                      # list applications (→ marks the bound app)
-miabi apps create web (--image miabi/guestbook [--tag 1.0] | --git-repo <url> [--git-ref main]) [--port 3000] [--use]
+miabi apps create web (--image miabi/guestbook [--tag 1.0] | --git-repo <url> [--git-ref main]) [--port 3000] [--location <name>] [--node <name>] [--use]
 miabi apps deploy      [web] --tag $SHA [--strategy rolling] [--no-cache] [--wait] [--timeout 10m]
 miabi apps start|stop|restart [web]               # control the app's container
 miabi apps deployments [web]                      # deploy history — the NUMBER column
@@ -214,7 +214,7 @@ and the logical databases hosted on them. Instances are addressed by **slug**
 ```
 miabi db ls                                   # list instances
 miabi db engines                              # engines + default versions
-miabi db create shop --engine postgres [--version 16] [--size-mb 2048] [--node <id>]
+miabi db create shop --engine postgres [--version 16] [--size-mb 2048] [--location <name>] [--node <name>]
 miabi db get shop
 miabi db start|stop|restart shop
 miabi db logs shop [--follow] [--tail 200]
@@ -242,7 +242,7 @@ creation, so there is no `set` — recreate the volume to change them.
 
 ```
 miabi volumes ls                              # list volumes (alias: vol)
-miabi volumes create web-data --size-mb 5120 [--node <id>]
+miabi volumes create web-data --size-mb 5120 [--location <name>] [--node <name>]
 miabi volumes get web-data                    # details + the apps mounting it
 miabi volumes attach web-data --app web --path /var/lib/data
 miabi volumes detach web-data --app web       # unmount; the data is kept
