@@ -103,6 +103,22 @@ func (c *Client) RunBackup(ctx context.Context, ws string, id, dbID uint, commen
 	return &b, c.postLong(ctx, fmt.Sprintf("/api/v1/workspaces/%s/databases/%d/databases/%d/backups", ws, id, dbID), body, &b, BackupRunTimeout)
 }
 
+// WaitForBackup polls a database backup until it finishes.
+func (c *Client) WaitForBackup(ctx context.Context, ws string, id, dbID, backupID uint, onUpdate func(status string)) (*Backup, error) {
+	return pollStatus(ctx, onUpdate, func() (*Backup, string, error) {
+		bs, err := c.Backups(ctx, ws, id, dbID)
+		if err != nil {
+			return nil, "", err
+		}
+		for i := range bs {
+			if bs[i].ID == backupID {
+				return &bs[i], bs[i].Status, nil
+			}
+		}
+		return nil, "", fmt.Errorf("backup #%d not found", backupID)
+	})
+}
+
 // ResolveLogicalDatabaseID selects the instance's only database when ref is empty.
 func (c *Client) ResolveLogicalDatabaseID(ctx context.Context, ws string, id uint, ref string) (uint, error) {
 	dbs, err := c.LogicalDatabases(ctx, ws, id)

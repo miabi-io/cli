@@ -220,6 +220,7 @@ miabi db start|stop|restart shop
 miabi db logs shop [--follow] [--tail 200]
 miabi db credentials shop                     # reveal admin connection (admin)
 miabi db upgrade shop --to 17 [--stop-apps]
+miabi db backup shop [--database app_prod] [--wait]   # --wait exits non-zero if it fails
 miabi db rm shop [--yes]
 # logical databases on an instance:
 miabi db databases shop                       # list
