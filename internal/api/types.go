@@ -528,6 +528,19 @@ func IsBackupTerminal(status string) bool {
 
 func IsBackupFailure(status string) bool { return status == BackupFailed }
 
+// Restore is the record of a restore the server runs after its request; its status uses the backup statuses.
+type Restore struct {
+	ID         uint       `json:"id"`
+	Kind       string     `json:"kind"`
+	Source     string     `json:"source"`
+	Status     string     `json:"status"`
+	Error      string     `json:"error,omitempty"`
+	Restored   []string   `json:"restored,omitempty"`
+	Failed     []string   `json:"failed,omitempty"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+}
+
 type VolumeBackupStatus struct {
 	S3Configured bool `json:"s3_configured"`
 	Entitled     bool `json:"entitled"`

@@ -908,8 +908,58 @@ func (c *Client) RunVolumeBackup(ctx context.Context, ws string, id uint) (*Volu
 }
 
 // RestoreVolumeBackup overwrites the volume and blocks for the whole restore.
-func (c *Client) RestoreVolumeBackup(ctx context.Context, ws string, id, backupID uint) error {
-	return c.postLong(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d/restore", ws, id, backupID), nil, nil, RestoreTimeout)
+// RestoreVolumeBackup returns the running restore; an older server restores inline and answers without one (ID 0).
+func (c *Client) RestoreVolumeBackup(ctx context.Context, ws string, id, backupID uint) (*Restore, error) {
+	var r Restore
+	return &r, c.postLong(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/backups/%d/restore", ws, id, backupID), nil, &r, RestoreTimeout)
+}
+
+func (c *Client) VolumeRestores(ctx context.Context, ws string, id uint) ([]Restore, error) {
+	var rs []Restore
+	return rs, c.get(ctx, fmt.Sprintf("/api/v1/workspaces/%s/volumes/%d/restores", ws, id), &rs)
+}
+
+// WaitForVolumeRestore polls a volume restore until it finishes.
+func (c *Client) WaitForVolumeRestore(ctx context.Context, ws string, id, restoreID uint, onUpdate func(status string)) (*Restore, error) {
+	return pollStatus(ctx, onUpdate, func() (*Restore, string, error) {
+		rs, err := c.VolumeRestores(ctx, ws, id)
+		if err != nil {
+			return nil, "", err
+		}
+		for i := range rs {
+			if rs[i].ID == restoreID {
+				return &rs[i], rs[i].Status, nil
+			}
+		}
+		return nil, "", fmt.Errorf("restore #%d not found", restoreID)
+	})
+}
+
+// pollStatus fetches until the status is terminal, reporting each change.
+func pollStatus[T any](ctx context.Context, onUpdate func(status string), fetch func() (*T, string, error)) (*T, error) {
+	ticker := time.NewTicker(volumeBackupPollInterval)
+	defer ticker.Stop()
+	last := ""
+	for {
+		v, status, err := fetch()
+		if err != nil {
+			return nil, err
+		}
+		if status != last {
+			last = status
+			if onUpdate != nil {
+				onUpdate(status)
+			}
+		}
+		if IsBackupTerminal(status) {
+			return v, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func (c *Client) DeleteVolumeBackup(ctx context.Context, ws string, id, backupID uint) error {

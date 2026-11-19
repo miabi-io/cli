@@ -37,6 +37,7 @@ func init() {
 	volBackupRunCmd.Flags().BoolVar(&volBackupWait, "wait", false, "block until the backup finishes, and exit non-zero if it fails")
 	volBackupRunCmd.Flags().DurationVar(&volBackupTimeout, "timeout", 30*time.Minute, "max time to wait with --wait")
 	volBackupRestoreCmd.Flags().BoolVarP(&volBackupYes, "yes", "y", false, "skip the confirmation prompt")
+	volBackupRestoreCmd.Flags().DurationVar(&volBackupTimeout, "timeout", 2*time.Hour, "max time to wait for the restore")
 	volBackupRmCmd.Flags().BoolVarP(&volBackupYes, "yes", "y", false, "skip the confirmation prompt")
 
 	for _, c := range []*cobra.Command{volBackupsCmd, volBackupRunCmd, volBackupRestoreCmd, volBackupLogsCmd, volBackupRmCmd,
@@ -169,7 +170,8 @@ var volBackupRestoreCmd = &cobra.Command{
 		"The apps mounting it are NOT stopped first — restoring under a running app\n" +
 		"gives it a filesystem that changed beneath it, so stop them yourself unless you\n" +
 		"know the workload tolerates it.\n\n" +
-		"The panel restores inline, so this call blocks until the restore finishes.",
+		"The panel restores in the background; this command waits until it finishes\n" +
+		"and exits non-zero if it fails.",
 	Example: "  miabi volumes backups restore web-data 42",
 	Args:    cobra.ExactArgs(2),
 	RunE: func(_ *cobra.Command, args []string) error {
@@ -208,10 +210,18 @@ var volBackupRestoreCmd = &cobra.Command{
 		}
 		sp := ui.NewSpinner(fmt.Sprintf("Restoring %s from backup #%d", args[0], b.ID))
 		sp.Start()
-		err = c.RestoreVolumeBackup(ctx, ws, id, b.ID)
+		r, err := c.RestoreVolumeBackup(ctx, ws, id, b.ID)
+		if err == nil && r.ID != 0 {
+			wctx, cancel := context.WithTimeout(ctx, volBackupTimeout)
+			r, err = c.WaitForVolumeRestore(wctx, ws, id, r.ID, nil)
+			cancel()
+		}
 		sp.Stop()
 		if err != nil {
 			return err
+		}
+		if api.IsBackupFailure(r.Status) {
+			return fmt.Errorf("restore of %s from backup #%d failed: %s", args[0], b.ID, r.Error)
 		}
 		ui.Success("Restored %s from backup #%d", ui.Bold(args[0]), b.ID)
 		ui.Info("Redeploy the apps mounting it so they see the restored data.")
