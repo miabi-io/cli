@@ -5,9 +5,9 @@ go 1.27.3
 require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/jkaninda/okapi v1.2.1
-	github.com/miabi-io/miabi v1.10.29
-	github.com/moby/moby/api v1.56.1
-	github.com/moby/moby/client v0.6.2
+	github.com/miabi-io/miabi v1.10.31
+	github.com/moby/moby/api v1.57.0
+	github.com/moby/moby/client v0.6.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.1.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -37,8 +37,8 @@ require (
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.opentelemetry.io/otel/metric v1.47.0 // indirect
 	go.opentelemetry.io/otel/trace v1.47.0 // indirect
-	golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2 // indirect
+	golang.org/x/crypto v0.59.0 // indirect
 	golang.org/x/mod v0.43.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )
