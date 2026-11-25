@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/jkaninda/okapi v1.2.1
-	github.com/miabi-io/miabi v1.10.31
+	github.com/miabi-io/miabi v1.10.32
 	github.com/moby/moby/api v1.57.0
 	github.com/moby/moby/client v0.6.3
 	github.com/spf13/cobra v1.10.2
